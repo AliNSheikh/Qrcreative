@@ -1,0 +1,6 @@
+{
+  "name": "qrcreative",
+  "description": "Create, customize, download and save QR codes for free with qrcreative. Design QR codes with colors and logos and manage editable QR codes from your account.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
