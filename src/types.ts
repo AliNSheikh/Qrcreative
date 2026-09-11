@@ -178,7 +178,7 @@ export interface LandingPageSocial {
 
 export interface LandingPageDesign {
   theme: 'modern-blue' | 'clean-white' | 'midnight-dark' | 'sunset-coral' | 'emerald-fresh' | 'neon-cyber' | 'ocean-breeze' | 'warm-amber';
-  layoutTemplate?: 'minimal' | 'business' | 'creative';
+  layoutTemplate?: 'minimal' | 'business' | 'creative' | 'hero-portrait' | 'modern-card' | 'navy-wave' | 'textured-craft' | 'corporate-blue' | 'warm-split';
   buttonStyle: 'rounded' | 'pill' | 'sharp';
   buttonVariant: 'filled' | 'outline' | 'soft' | 'glass';
   primaryColor: string;
@@ -189,13 +189,86 @@ export interface LandingPageDesign {
   avatarShape: 'circle' | 'rounded' | 'square';
 }
 
+export interface VCardConnectIcon {
+  id: string;
+  type: 'mobile' | 'email' | 'sms' | 'whatsapp' | 'phone' | 'website';
+  value: string;
+}
+
+export interface VCardContactItem {
+  id: string;
+  type: 'phone' | 'email' | 'address';
+  label: string;
+  value: string;
+  addressFields?: {
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    zip?: string;
+    actionButton?: boolean;
+    actionLabel?: string;
+    mapUrl?: string;
+  };
+}
+
+export interface VCardSocialItem {
+  id: string;
+  platform: string;
+  url: string;
+  title: string;
+  subtitle?: string;
+  showSubtitle: boolean;
+  icon?: string;
+}
+
 export interface LandingPageData {
   slug: string;
   title: string;
   bio: string;
+  jobTitle?: string;
+  company?: string;
+  brandLogo?: string;
   avatarUrl?: string;
   coverUrl?: string;
   badge?: string;
+  vcardTemplate?: 'hero-portrait' | 'modern-card' | 'navy-wave' | 'textured-craft' | 'corporate-blue' | 'warm-split';
+  showProfilePhoto?: boolean;
+  showBrandLogo?: boolean;
+  showConnectIcons?: boolean;
+  connectIcons?: VCardConnectIcon[];
+  headingTextSection?: {
+    enabled: boolean;
+    title: string;
+    description: string;
+    showCardBg: boolean;
+  };
+  contactSection?: {
+    enabled: boolean;
+    title: string;
+    showIcon: boolean;
+    iconUrl?: string;
+    autoSaveContact?: boolean;
+    contactExchangeForm?: boolean;
+    items: VCardContactItem[];
+  };
+  imagesSection?: {
+    enabled: boolean;
+    showTitleDesc: boolean;
+    title?: string;
+    description?: string;
+    viewType: 'list' | 'grid1' | 'grid2';
+    photos: string[];
+    showCardBg: boolean;
+  };
+  socialSection?: {
+    enabled: boolean;
+    showTitleDesc: boolean;
+    title?: string;
+    description?: string;
+    items: VCardSocialItem[];
+  };
   links: LandingPageLink[];
   socials: LandingPageSocial[];
   contact?: {

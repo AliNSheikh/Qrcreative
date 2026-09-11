@@ -277,6 +277,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
     }
   };
 
+  const vcardTemplate = landingData.vcardTemplate || (qr.type === 'vcard' ? 'hero-portrait' : null);
   const layout = landingData.design?.layoutTemplate || 'minimal';
 
   return (
@@ -293,8 +294,242 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       <div className="w-full max-w-md mx-auto my-auto">
         <div className={`${themeStyle.cardBg} border ${themeStyle.border} rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all`}>
           
+          {/* ===================== VCARD DEDICATED TEMPLATES ===================== */}
+          {vcardTemplate && (
+            <div>
+              {/* Template 1: Hero Portrait */}
+              {vcardTemplate === 'hero-portrait' && (
+                <div className="relative w-full min-h-[580px] bg-black text-white flex flex-col justify-between">
+                  <div className="absolute inset-0 w-full h-[65%] z-0 overflow-hidden">
+                    <img
+                      src={landingData.avatarUrl || landingData.coverUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop&q=80'}
+                      alt={landingData.title}
+                      className="w-full h-full object-cover filter grayscale contrast-125"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-transparent" />
+                  </div>
+
+                  <div className="relative z-10 pt-24 px-6">
+                    <h1 className="text-3xl font-black font-rubik tracking-tight text-white drop-shadow-md">
+                      {landingData.title || 'Contact Name'}
+                    </h1>
+                    <div className="text-sm font-semibold text-gray-200 mt-1 drop-shadow-sm">
+                      {landingData.jobTitle || 'Professional'}
+                    </div>
+                    <div className="text-sm font-bold text-white mt-0.5 drop-shadow-sm">
+                      {landingData.company || 'Company'}
+                    </div>
+
+                    {landingData.showBrandLogo !== false && (
+                      <div className="flex items-center gap-2 mt-4">
+                        <div className="w-6 h-6 rounded-full bg-[#f59e0b] flex items-center justify-center text-black font-black text-xs shadow-md">
+                          {(landingData.company || 'T').charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-sm font-bold text-white tracking-wide">
+                          {landingData.brandLogo || landingData.company || 'Teamwork.Co'}
+                        </span>
+                      </div>
+                    )}
+
+                    {landingData.showConnectIcons !== false && (
+                      <div className="flex items-center gap-2.5 mt-5">
+                        {landingData.contact?.phone && (
+                          <a
+                            href={`tel:${landingData.contact.phone}`}
+                            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 flex items-center justify-center text-white transition shadow-sm"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        )}
+                        {landingData.contact?.email && (
+                          <a
+                            href={`mailto:${landingData.contact.email}`}
+                            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 flex items-center justify-center text-white transition shadow-sm"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </a>
+                        )}
+                        {landingData.contact?.phone && (
+                          <a
+                            href={`sms:${landingData.contact.phone}`}
+                            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 flex items-center justify-center text-white transition shadow-sm"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleShare}
+                          className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 flex items-center justify-center text-white transition shadow-sm"
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative z-10 mt-6 bg-white text-[#0a0909] rounded-t-[32px] p-6 pb-24 shadow-2xl space-y-4">
+                    {landingData.headingTextSection?.enabled !== false && (
+                      <div>
+                        <h2 className="text-lg font-bold font-rubik text-center text-[#0a0909]">
+                          {landingData.headingTextSection?.title || 'About Me'}
+                        </h2>
+                        <p className="text-xs text-gray-600 text-center mt-1.5 leading-relaxed">
+                          {landingData.headingTextSection?.description || landingData.bio}
+                        </p>
+                      </div>
+                    )}
+
+                    {landingData.contact?.location && (
+                      <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2 text-xs text-gray-800">
+                        <MapPin className="w-3.5 h-3.5 text-[#3b82f6] shrink-0" />
+                        <span className="truncate">{landingData.contact.location}</span>
+                      </div>
+                    )}
+
+                    {landingData.imagesSection?.photos && landingData.imagesSection.photos.length > 0 && (
+                      <div>
+                        <span className="text-[11px] font-bold text-gray-400 block mb-1.5 uppercase tracking-wider">
+                          Photos
+                        </span>
+                        <div className="grid grid-cols-3 gap-2">
+                          {landingData.imagesSection.photos.slice(0, 3).map((p, i) => (
+                            <img key={i} src={p} alt="Gallery" className="w-full h-16 rounded-xl object-cover" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="absolute bottom-4 inset-x-4 z-30 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      className="w-12 h-12 rounded-full bg-[#181920] border border-white/15 text-white flex items-center justify-center hover:bg-black transition shadow-lg cursor-pointer"
+                    >
+                      {copied ? <Check className="w-5 h-5 text-green-400" /> : <Share2 className="w-5 h-5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadVCard}
+                      className="flex-1 h-12 rounded-full bg-[#24252e] border border-white/15 text-white flex items-center justify-between px-5 hover:bg-black transition shadow-lg cursor-pointer"
+                    >
+                      <span className="text-xs font-bold">Add to Contact</span>
+                      <div className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center font-bold text-sm">
+                        +
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Template 2: Modern Card */}
+              {vcardTemplate === 'modern-card' && (
+                <div className="p-6 bg-white text-[#0a0909] space-y-4">
+                  <div className="rounded-2xl p-4 bg-[#141b2d] text-white flex items-center gap-4 shadow-md">
+                    <img
+                      src={landingData.avatarUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80'}
+                      alt={landingData.title}
+                      className="w-16 h-16 rounded-xl object-cover border-2 border-orange-500 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <h2 className="text-base font-bold truncate">{landingData.title}</h2>
+                      <div className="text-xs text-orange-400 truncate">{landingData.jobTitle}</div>
+                      <div className="text-xs text-gray-300 truncate">{landingData.company}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {landingData.contact?.phone && (
+                      <a href={`tel:${landingData.contact.phone}`} className="py-2.5 rounded-xl bg-orange-500 text-white flex flex-col items-center justify-center shadow-xs">
+                        <Phone className="w-4 h-4" />
+                        <span className="text-[9px] font-bold mt-0.5">Call</span>
+                      </a>
+                    )}
+                    {landingData.contact?.email && (
+                      <a href={`mailto:${landingData.contact.email}`} className="py-2.5 rounded-xl bg-orange-500 text-white flex flex-col items-center justify-center shadow-xs">
+                        <Mail className="w-4 h-4" />
+                        <span className="text-[9px] font-bold mt-0.5">Mail</span>
+                      </a>
+                    )}
+                    {landingData.contact?.phone && (
+                      <a href={`sms:${landingData.contact.phone}`} className="py-2.5 rounded-xl bg-orange-500 text-white flex flex-col items-center justify-center shadow-xs">
+                        <MessageCircle className="w-4 h-4" />
+                        <span className="text-[9px] font-bold mt-0.5">SMS</span>
+                      </a>
+                    )}
+                    <button onClick={handleShare} className="py-2.5 rounded-xl bg-orange-500 text-white flex flex-col items-center justify-center shadow-xs">
+                      <Share2 className="w-4 h-4" />
+                      <span className="text-[9px] font-bold mt-0.5">Share</span>
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-4 rounded-xl">
+                    {landingData.bio}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadVCard}
+                    className="w-full py-3.5 rounded-xl bg-orange-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2"
+                  >
+                    <span>Save Contact to Device (.vcf)</span>
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Template 3: Navy Wave / Other templates */}
+              {(vcardTemplate === 'navy-wave' || vcardTemplate === 'textured-craft' || vcardTemplate === 'corporate-blue' || vcardTemplate === 'warm-split') && (
+                <div className="p-6 bg-white text-[#0a0909] text-center space-y-4">
+                  <div className="w-24 h-24 rounded-full overflow-hidden mx-auto border-4 border-white shadow-lg">
+                    <img
+                      src={landingData.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80'}
+                      alt={landingData.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-bold">{landingData.title}</h1>
+                    <div className="text-xs font-semibold text-blue-600 mt-0.5">{landingData.jobTitle}</div>
+                    <div className="text-xs text-gray-500">{landingData.company}</div>
+                  </div>
+
+                  <p className="text-xs text-gray-600 leading-relaxed max-w-sm mx-auto">
+                    {landingData.bio}
+                  </p>
+
+                  <div className="flex items-center justify-center gap-3">
+                    {landingData.contact?.phone && (
+                      <a href={`tel:${landingData.contact.phone}`} className="p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition">
+                        <Phone className="w-4 h-4" />
+                      </a>
+                    )}
+                    {landingData.contact?.email && (
+                      <a href={`mailto:${landingData.contact.email}`} className="p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition">
+                        <Mail className="w-4 h-4" />
+                      </a>
+                    )}
+                    <button onClick={handleShare} className="p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition">
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadVCard}
+                    className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2"
+                  >
+                    <span>Save Contact to Device (.vcf)</span>
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ===================== 1. MINIMAL LAYOUT ===================== */}
-          {layout === 'minimal' && (
+          {!vcardTemplate && layout === 'minimal' && (
             <div className="relative px-6 pt-10 pb-8 text-center">
               {/* Quick Share Button */}
               <button

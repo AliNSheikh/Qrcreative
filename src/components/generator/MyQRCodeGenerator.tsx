@@ -19,6 +19,7 @@ import { getSiteUrl, getLandingPageUrl } from '../../lib/config';
 import { LandingPageEditor } from '../landing/LandingPageEditor';
 import { PhoneMockupPreview } from '../landing/PhoneMockupPreview';
 import { UrlQRCodeEditor } from './UrlQRCodeEditor';
+import { VCardQRCodeEditor } from './VCardQRCodeEditor';
 import {
   Globe,
   Contact,
@@ -582,8 +583,43 @@ export const MyQRCodeGenerator: React.FC<MyQRCodeGeneratorProps> = ({
         </div>
       )}
 
+      {/* STEP 2 & 3: SPECIALIZED DEDICATED VCARD GENERATOR WITH TEMPLATES & LANDING PAGE */}
+      {step >= 2 && selectedType === 'vcard' && (
+        <div className="animate-in fade-in duration-200">
+          <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#e3e5ed]">
+            <button
+              type="button"
+              onClick={() => {
+                if (editingQR && onCancelEdit) {
+                  onCancelEdit();
+                } else {
+                  setStep(1);
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e3e5ed] text-xs font-semibold text-[#0a0909] hover:bg-gray-50 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Change Type</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-[#3b82f6]/10 text-[#3b82f6] text-xs font-bold">
+                vCard Business Card
+              </span>
+            </div>
+          </div>
+
+          <VCardQRCodeEditor
+            currentUser={currentUser}
+            onOpenAuth={onOpenAuth}
+            onQRSaved={onQRSaved}
+            editingQR={editingQR}
+            onCancelEdit={onCancelEdit}
+          />
+        </div>
+      )}
+
       {/* STEP 2 & 3: OTHER TYPES OR MULTI-LINK LANDING PAGE BUILDER */}
-      {step >= 2 && !(selectedType === 'url' && !useLandingPage) && (
+      {step >= 2 && !(selectedType === 'url' && !useLandingPage) && selectedType !== 'vcard' && (
         <div className="animate-in fade-in duration-200">
           {/* Top Breadcrumb / Back Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-[#e3e5ed]">
