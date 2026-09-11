@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, QRCodeRecord, QRCodeType } from './types';
-import { getCurrentUser, signOutUser } from './lib/supabase/client';
+import { getCurrentUser, signOutUser, onAuthPasswordRecovery } from './lib/supabase/client';
 import { fetchRuntimeConfig } from './lib/config';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
@@ -23,7 +23,7 @@ export function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register' | 'forgot' | 'update_password'>('login');
   const [authPromptMessage, setAuthPromptMessage] = useState<string | undefined>();
 
   // Router View State
@@ -50,8 +50,17 @@ export function App() {
     }
     initSession();
 
-    // Check if URL has a hash or query route
+    // Check if URL has a password recovery hash or query
     if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (hash.includes('type=recovery') || search.includes('type=recovery')) {
+        setAuthInitialMode('update_password');
+        setAuthPromptMessage('Please enter a new password to complete account recovery.');
+        setAuthModalOpen(true);
+      }
+
+      // Check if URL has a hash or query route
       const path = window.location.pathname.replace(/^\//, '');
       if (path === 'create') setCurrentView('create');
       else if (path === 'dashboard') setCurrentView('dashboard');
@@ -63,6 +72,16 @@ export function App() {
       else if (path === 'privacy') setCurrentView('privacy');
       else if (path === 'terms') setCurrentView('terms');
     }
+
+    const unsubscribeRecovery = onAuthPasswordRecovery(() => {
+      setAuthInitialMode('update_password');
+      setAuthPromptMessage('Please enter a new password to complete account recovery.');
+      setAuthModalOpen(true);
+    });
+
+    return () => {
+      unsubscribeRecovery();
+    };
   }, []);
 
   const showToast = (msg: string) => {
@@ -72,7 +91,7 @@ export function App() {
     }, 3500);
   };
 
-  const handleOpenAuth = (mode: 'login' | 'register' = 'login', promptMsg?: string) => {
+  const handleOpenAuth = (mode: 'login' | 'register' | 'forgot' | 'update_password' = 'login', promptMsg?: string) => {
     setAuthInitialMode(mode);
     setAuthPromptMessage(promptMsg);
     setAuthModalOpen(true);

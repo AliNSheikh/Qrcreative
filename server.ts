@@ -389,6 +389,67 @@ app.post('/api/auth/check-user', async (req, res) => {
   }
 });
 
+// Password reset request endpoint
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, redirectTo } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+    if (!supabaseServer) {
+      return res.status(503).json({ error: 'Database service is unavailable.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const redirect = redirectTo || 'https://qrcreative.vercel.app';
+
+    // Verify user exists in Supabase auth.users
+    const { data: userList } = await supabaseServer.auth.admin.listUsers();
+    const userFound = userList?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+    if (!userFound) {
+      return res.status(404).json({ error: 'No account found with this email address. Please check spelling or create a new free account.' });
+    }
+
+    // Generate verified recovery link using Admin API (bypasses standard mailer failure)
+    const linkRes = await supabaseServer.auth.admin.generateLink({
+      type: 'recovery',
+      email: cleanEmail,
+      options: { redirectTo: redirect }
+    });
+
+    let actionLink = linkRes.data?.properties?.action_link;
+
+    // Also attempt to trigger Supabase built-in email dispatch
+    let emailSent = false;
+    let emailNotice = '';
+    try {
+      const emailRes = await supabaseServer.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: redirect
+      });
+      if (!emailRes.error) {
+        emailSent = true;
+      } else {
+        emailNotice = emailRes.error.message;
+      }
+    } catch (e: any) {
+      emailNotice = e.message;
+    }
+
+    return res.json({
+      success: true,
+      emailSent,
+      emailNotice: emailNotice || undefined,
+      recoveryLink: actionLink,
+      message: emailSent
+        ? `Password reset link has been sent to ${cleanEmail}. Please check your inbox and spam folder.`
+        : `Password recovery link generated for ${cleanEmail}.`
+    });
+  } catch (err: any) {
+    console.error('Error in /api/auth/reset-password:', err);
+    return res.status(500).json({ error: err.message || 'Password reset request failed.' });
+  }
+});
+
 // Sync a redirect slug into server memory
 app.post('/api/qr/sync', (req, res) => {
   const { id, slug, destination_url, is_active, name } = req.body;

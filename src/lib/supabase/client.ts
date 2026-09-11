@@ -352,3 +352,111 @@ export async function updateProfile(displayName: string): Promise<boolean> {
   }
   return false;
 }
+
+export async function sendPasswordResetEmail(email: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  recoveryLink?: string;
+}> {
+  const cleanEmail = email.trim().toLowerCase();
+  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}` : 'https://qrcreative.vercel.app';
+
+  // 1. Attempt via server endpoint first (generates verified action link and handles mailer rate limits)
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, redirectTo })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        message: data.message || `Password reset link created for ${cleanEmail}.`,
+        recoveryLink: data.recoveryLink
+      };
+    } else if (res.status === 404) {
+      const data = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error: data.error || 'No account found with this email address. Please check your spelling or register.'
+      };
+    }
+  } catch {
+    // If backend /api is not deployed on static Vercel, fallback directly to Supabase client SDK below
+  }
+
+  // 2. Direct client SDK via Supabase
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo
+    });
+
+    if (error) {
+      if (error.message.toLowerCase().includes('rate limit') || (error as any).status === 429) {
+        return {
+          success: false,
+          error: 'Supabase email rate limit exceeded for testing. Supabase limits default test emails per hour. Please wait a few minutes before trying again or configure SMTP in your Supabase dashboard.'
+        };
+      }
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+
+    return {
+      success: true,
+      message: `Password reset link has been dispatched to ${cleanEmail}! Please check your email inbox and spam folder.`
+    };
+  }
+
+  return {
+    success: false,
+    error: 'Database connection is currently unavailable. Please check your internet connection and try again.'
+  };
+}
+
+export async function updateUserPassword(newPassword: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  if (!newPassword || newPassword.length < 6) {
+    return { success: false, error: 'Password must be at least 6 characters.' };
+  }
+
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  }
+
+  return { success: false, error: 'Database service is unavailable.' };
+}
+
+export function onAuthPasswordRecovery(callback: () => void): () => void {
+  if (supabase) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        callback();
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }
+  return () => {};
+}
