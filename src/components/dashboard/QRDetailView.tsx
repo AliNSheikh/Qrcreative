@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { QRCodeRecord } from '../../types';
 import { renderQRToCanvas, formatQRContent, generateQRSVG } from '../../lib/qr/generator';
+import { getSiteUrl } from '../../lib/config';
 import {
   ArrowLeft,
   Edit,
@@ -37,7 +38,7 @@ export const QRDetailView: React.FC<QRDetailViewProps> = ({
 
   const isEditable = qr.mode === 'editable';
   const redirectUrl = isEditable && qr.slug
-    ? `${typeof window !== 'undefined' ? window.location.origin : 'https://qrcreative.app'}/r/${qr.slug}`
+    ? `${getSiteUrl()}/r/${qr.slug}`
     : '';
 
   const formattedContent = formatQRContent(
@@ -45,7 +46,7 @@ export const QRDetailView: React.FC<QRDetailViewProps> = ({
     qr.content,
     qr.mode,
     qr.slug,
-    typeof window !== 'undefined' ? window.location.origin : undefined
+    getSiteUrl()
   );
 
   useEffect(() => {

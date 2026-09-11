@@ -15,6 +15,7 @@ import {
   DESIGN_TEMPLATES
 } from '../../lib/qr/generator';
 import { saveQRCode } from '../../lib/storage';
+import { getSiteUrl } from '../../lib/config';
 import {
   Globe,
   FileText,
@@ -151,7 +152,7 @@ export const QRGenerator: React.FC<QRGeneratorProps> = ({
     content,
     mode,
     editingQR?.slug || 'preview_slug',
-    typeof window !== 'undefined' ? window.location.origin : undefined
+    getSiteUrl()
   );
 
   // Contrast check

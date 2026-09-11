@@ -9,9 +9,32 @@ const PORT = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+function sanitizeSupabaseUrl(url: string = ''): string {
+  if (!url) return '';
+  return url.trim().replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
+}
+
+function sanitizeSiteUrl(url: string = ''): string {
+  if (!url) return '';
+  return url.trim().replace(/\/+$/, '');
+}
+
 // Optional Supabase client on server
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const rawSupabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  '';
+
+const supabaseUrl = sanitizeSupabaseUrl(rawSupabaseUrl);
+
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_KEY ||
+  '';
 
 const supabaseServer = (supabaseUrl && supabaseKey)
   ? createClient(supabaseUrl, supabaseKey)
@@ -183,7 +206,56 @@ app.get('/r/:slug', async (req, res) => {
 
 // API Routes
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'qrcreative' });
+  res.json({
+    status: 'ok',
+    service: 'qrcreative',
+    supabaseConnected: Boolean(supabaseServer)
+  });
+});
+
+// Runtime configuration endpoint for site URL and public Supabase config
+app.get('/api/config', (req, res) => {
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || `localhost:${PORT}`;
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
+  const detectedOrigin = `${proto}://${host}`;
+
+  const configuredSiteUrl =
+    process.env.VITE_SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.APP_URL ||
+    process.env.SITE_URL ||
+    detectedOrigin;
+
+  const publicSupabaseUrl =
+    process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    '';
+
+  const publicSupabaseAnonKey =
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_KEY ||
+    '';
+
+  const cleanSiteUrl = sanitizeSiteUrl(configuredSiteUrl);
+  const cleanSupabaseUrl = sanitizeSupabaseUrl(publicSupabaseUrl);
+
+  res.json({
+    siteUrl: cleanSiteUrl,
+    detectedOrigin,
+    supabase: {
+      url: cleanSupabaseUrl,
+      anonKey: publicSupabaseAnonKey,
+      isConfigured: Boolean(
+        cleanSupabaseUrl &&
+        publicSupabaseAnonKey &&
+        cleanSupabaseUrl.startsWith('https://') &&
+        publicSupabaseAnonKey.length > 20
+      )
+    }
+  });
 });
 
 // Sync a redirect slug into server memory

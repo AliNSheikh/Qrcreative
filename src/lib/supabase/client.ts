@@ -2,15 +2,22 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UserProfile } from '../../types';
 
+function sanitizeSupabaseUrl(url: string = ''): string {
+  if (!url) return '';
+  return url.trim().replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
+}
+
 // Detect environment variables for Supabase
 const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
 const procEnv = typeof process !== 'undefined' ? process.env : undefined;
 
-const supabaseUrl =
+const rawSupabaseUrl =
   metaEnv?.VITE_SUPABASE_URL ||
   procEnv?.NEXT_PUBLIC_SUPABASE_URL ||
   procEnv?.VITE_SUPABASE_URL ||
   '';
+
+const supabaseUrl = sanitizeSupabaseUrl(rawSupabaseUrl);
 
 const supabaseAnonKey =
   metaEnv?.VITE_SUPABASE_ANON_KEY ||
@@ -18,22 +25,53 @@ const supabaseAnonKey =
   procEnv?.VITE_SUPABASE_ANON_KEY ||
   '';
 
-export const isSupabaseConfigured = Boolean(
+export let isSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseAnonKey &&
   supabaseUrl.startsWith('https://') &&
   supabaseAnonKey.length > 20
 );
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
+export let supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
+
+/**
+ * Initializes Supabase from backend /api/config if not pre-configured via Vite env vars
+ */
+export async function ensureSupabaseInitialized(): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) return false;
+    const data = await res.json();
+    const cleanUrl = sanitizeSupabaseUrl(data?.supabase?.url);
+    if (
+      cleanUrl &&
+      data?.supabase?.anonKey &&
+      cleanUrl.startsWith('https://') &&
+      data.supabase.anonKey.length > 20
+    ) {
+      supabase = createClient(cleanUrl, data.supabase.anonKey);
+      isSupabaseConfigured = true;
+      return true;
+    }
+  } catch {
+    // Ignore runtime network error
+  }
+  return false;
+}
 
 // Local fallback session storage key
 const LOCAL_USER_KEY = 'qrcreative_auth_user';
 const LOCAL_USERS_DB_KEY = 'qrcreative_users_db';
 
 export async function getCurrentUser(): Promise<UserProfile | null> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -73,6 +111,10 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<{ user: UserProfile | null; error: string | null }> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { user: null, error: error.message };
@@ -124,6 +166,10 @@ export async function signInWithEmail(email: string, password: string): Promise<
 }
 
 export async function signUpWithEmail(email: string, password: string, displayName: string): Promise<{ user: UserProfile | null; error: string | null }> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.auth.signUp({
       email,

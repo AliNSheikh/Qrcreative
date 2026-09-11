@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, QRCodeRecord, QRCodeType } from './types';
 import { getCurrentUser, signOutUser } from './lib/supabase/client';
+import { fetchRuntimeConfig } from './lib/config';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { Hero } from './components/marketing/Hero';
@@ -40,6 +41,7 @@ export function App() {
   useEffect(() => {
     async function initSession() {
       try {
+        await fetchRuntimeConfig();
         const user = await getCurrentUser();
         setCurrentUser(user);
       } catch (err) {

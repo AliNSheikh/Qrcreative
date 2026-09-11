@@ -1,5 +1,5 @@
 import { QRCodeRecord, QRScanRecord } from '../types';
-import { isSupabaseConfigured, supabase } from './supabase/client';
+import { isSupabaseConfigured, supabase, ensureSupabaseInitialized } from './supabase/client';
 
 const LOCAL_QR_KEY = 'qrcreative_qr_codes';
 const LOCAL_SCANS_KEY = 'qrcreative_scans';
@@ -92,6 +92,10 @@ export async function saveQRCode(
   }
 
   // If Supabase is available
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     if (record.id) {
       // Update
@@ -199,6 +203,10 @@ async function notifyServerOfQR(code: QRCodeRecord) {
 
 // Fetch all QR codes for a user
 export async function getUserQRCodes(userId: string): Promise<QRCodeRecord[]> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('qr_codes')
@@ -216,6 +224,10 @@ export async function getUserQRCodes(userId: string): Promise<QRCodeRecord[]> {
 
 // Fetch a single QR code by ID
 export async function getQRCodeById(id: string): Promise<QRCodeRecord | null> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('qr_codes')
@@ -257,6 +269,10 @@ export async function duplicateQRCode(id: string, userId: string): Promise<QRCod
 
 // Delete a QR code
 export async function deleteQRCode(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase
       .from('qr_codes')
@@ -285,6 +301,10 @@ export async function recordScanEvent(
   qrCodeId: string,
   metadata: { referrer?: string; user_agent?: string; device_type?: 'mobile' | 'tablet' | 'desktop' | 'unknown' }
 ): Promise<void> {
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
   if (isSupabaseConfigured && supabase) {
     await supabase.from('qr_scans').insert({
       qr_code_id: qrCodeId,

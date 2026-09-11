@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeRecord, UserProfile } from '../../types';
 import { getUserQRCodes, deleteQRCode, duplicateQRCode } from '../../lib/storage';
 import { renderQRToCanvas, formatQRContent } from '../../lib/qr/generator';
+import { getSiteUrl } from '../../lib/config';
 import {
   Search,
   Filter,
@@ -39,7 +40,7 @@ const QRThumbnail: React.FC<{ qr: QRCodeRecord }> = ({ qr }) => {
       qr.content,
       qr.mode,
       qr.slug,
-      typeof window !== 'undefined' ? window.location.origin : undefined
+      getSiteUrl()
     );
     renderQRToCanvas(canvasRef.current, formatted, qr.design, 240);
   }, [qr]);
@@ -91,7 +92,7 @@ export const MyQRCodes: React.FC<MyQRCodesProps> = ({
   // Copy destination or redirect link
   const handleCopyLink = (qr: QRCodeRecord) => {
     const link = qr.mode === 'editable' && qr.slug
-      ? `${window.location.origin}/r/${qr.slug}`
+      ? `${getSiteUrl()}/r/${qr.slug}`
       : qr.destination_url || qr.content?.url || 'https://qrcreative.app';
 
     navigator.clipboard.writeText(link);
@@ -132,7 +133,7 @@ export const MyQRCodes: React.FC<MyQRCodesProps> = ({
       qr.content,
       qr.mode,
       qr.slug,
-      typeof window !== 'undefined' ? window.location.origin : undefined
+      getSiteUrl()
     );
     await renderQRToCanvas(exportCanvas, formatted, qr.design, 1024);
     const dataUrl = exportCanvas.toDataURL('image/png');

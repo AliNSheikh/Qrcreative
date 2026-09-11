@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import { QRCodeDesign, QRCodeMode, QRCodeType } from '../../types';
+import { getSiteUrl } from '../config';
 
 // Format raw payload based on type and mode
 export function formatQRContent(
@@ -11,7 +12,7 @@ export function formatQRContent(
 ): string {
   // If editable mode, point to the redirect link
   if (mode === 'editable' && slug) {
-    const base = siteUrl || (typeof window !== 'undefined' ? window.location.origin : 'https://qrcreative.app');
+    const base = siteUrl || getSiteUrl();
     return `${base.replace(/\/$/, '')}/r/${slug}`;
   }
 
