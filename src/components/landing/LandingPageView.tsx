@@ -33,6 +33,7 @@ import {
   Briefcase,
   Feather
 } from 'lucide-react';
+import { PdfViewerLandingView } from './PdfViewerLandingView';
 
 interface LandingPageViewProps {
   qr: QRCodeRecord;
@@ -290,9 +291,30 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
         </div>
       )}
 
-      {/* Main Card Container */}
-      <div className="w-full max-w-md mx-auto my-auto">
-        <div className={`${themeStyle.cardBg} border ${themeStyle.border} rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all`}>
+      {/* Main Container */}
+      {qr.type === 'pdf' || Boolean(landingData.pdfDocument) ? (
+        <div className="w-full my-auto py-4">
+          <PdfViewerLandingView
+            qr={qr}
+            landingData={landingData}
+            themeStyle={themeStyle}
+            onShare={handleShare}
+            copied={copied}
+          />
+          {/* Branding Footer */}
+          <div className="text-center mt-6">
+            <button
+              onClick={onCreateYourOwn || onNavigateHome}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-[#141416] border border-[#e3e5ed] dark:border-white/10 text-xs font-medium text-[#3f3e3e] dark:text-gray-300 hover:text-[#4981ff] shadow-sm transition"
+            >
+              <QrCode className="w-3.5 h-3.5 text-[#4981ff]" />
+              <span>Powered by <strong>qrcreative</strong> — Create your free QR code</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full max-w-md mx-auto my-auto">
+          <div className={`${themeStyle.cardBg} border ${themeStyle.border} rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all`}>
           
           {/* ===================== VCARD DEDICATED TEMPLATES ===================== */}
           {vcardTemplate && (
@@ -1031,6 +1053,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 };

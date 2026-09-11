@@ -137,6 +137,55 @@ export const PhoneMockupPreview: React.FC<PhoneMockupPreviewProps> = ({ data }) 
 
       {/* Screen Viewport */}
       <div className={`w-full h-full rounded-[32px] overflow-y-auto ${themeStyle.bg} flex flex-col justify-between select-none relative scrollbar-none`}>
+        {/* ======================= PDF DOCUMENT VIEWER PREVIEW ======================= */}
+        {data.pdfDocument ? (
+          <div className="pt-7 px-3 pb-2 flex flex-col justify-between h-full text-left">
+            <div>
+              {/* PDF Header */}
+              <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-900/40 mb-2.5">
+                <div className="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                  PDF
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[11px] font-bold block truncate text-gray-900 dark:text-white">
+                    {data.pdfDocument.fileName || 'document.pdf'}
+                  </span>
+                  <span className="text-[9px] text-gray-500 block">
+                    {data.pdfDocument.fileSize || '2.5 MB'} • {data.pdfDocument.pageCount || 6} Pages
+                  </span>
+                </div>
+              </div>
+
+              {/* Document Reader Sheet Preview */}
+              <div className="bg-white dark:bg-[#18181b] rounded-xl border border-gray-200 dark:border-white/10 p-3 shadow-xs space-y-2">
+                <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider block">
+                  {data.pdfDocument.companyName || data.company || 'Official Document'}
+                </span>
+                <h4 className="text-xs font-bold font-rubik text-gray-950 dark:text-white leading-tight">
+                  {data.title || data.pdfDocument.fileName}
+                </h4>
+                <p className="text-[10px] text-gray-600 dark:text-gray-300 leading-relaxed line-clamp-3">
+                  {data.pdfDocument.description || data.bio || 'Official document provided for direct viewing and offline download.'}
+                </p>
+
+                <div className="p-2 bg-gray-50 dark:bg-white/5 rounded-lg space-y-1">
+                  <div className="h-1.5 bg-gray-200 dark:bg-white/10 rounded w-full" />
+                  <div className="h-1.5 bg-gray-200 dark:bg-white/10 rounded w-5/6" />
+                  <div className="h-1.5 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Download Button */}
+            <div className="pt-2">
+              <div className="w-full py-2 px-3 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md">
+                <Download className="w-3.5 h-3.5" />
+                <span>Download PDF ({data.pdfDocument.fileSize || '2.5 MB'})</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* ======================= 1. MINIMAL LAYOUT ======================= */}
         {layout === 'minimal' && (
           <div className="pt-8 px-3 text-center">
@@ -470,6 +519,8 @@ export const PhoneMockupPreview: React.FC<PhoneMockupPreviewProps> = ({ data }) 
               </div>
             </div>
           </div>
+        )}
+        </>
         )}
 
         {/* Footer in phone */}

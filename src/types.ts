@@ -223,6 +223,20 @@ export interface VCardSocialItem {
   icon?: string;
 }
 
+export interface PdfDocumentData {
+  fileUrl: string;
+  fileName: string;
+  fileSize?: string;
+  pageCount?: number;
+  description?: string;
+  companyName?: string;
+  enableDownload?: boolean;
+  enablePrint?: boolean;
+  autoDownload?: boolean;
+  previewPages?: string[];
+  themeColor?: string;
+}
+
 export interface LandingPageData {
   slug: string;
   title: string;
@@ -233,6 +247,7 @@ export interface LandingPageData {
   avatarUrl?: string;
   coverUrl?: string;
   badge?: string;
+  pdfDocument?: PdfDocumentData;
   vcardTemplate?: 'hero-portrait' | 'modern-card' | 'navy-wave' | 'textured-craft' | 'corporate-blue' | 'warm-split';
   showProfilePhoto?: boolean;
   showBrandLogo?: boolean;
