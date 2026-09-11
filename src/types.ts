@@ -1,16 +1,23 @@
 export type QRCodeType =
   | 'url'
+  | 'vcard'
+  | 'pdf'
+  | 'images'
+  | 'social'
+  | 'video'
   | 'text'
+  | 'business'
+  | 'facebook'
+  | 'wifi'
+  | 'applinks'
+  | 'menu'
+  | 'landing'
   | 'email'
   | 'phone'
   | 'sms'
   | 'whatsapp'
-  | 'wifi'
-  | 'vcard'
   | 'location'
   | 'event'
-  | 'social'
-  | 'applinks'
   | 'file';
 
 export type QRCodeMode = 'static' | 'editable';
@@ -28,6 +35,21 @@ export type TemplatePreset =
   | 'gradient'
   | 'business'
   | 'creative';
+
+export type FrameStyle =
+  | 'none'
+  | 'sticker-rainbow'
+  | 'sticker-badge-teal'
+  | 'sticker-circle-red'
+  | 'frame-bottom-bar'
+  | 'frame-top-bar';
+
+export interface QRFrameConfig {
+  style: FrameStyle;
+  text?: string;
+  color?: string;
+  badgeBg?: string;
+}
 
 export interface QRCodeDesign {
   template: TemplatePreset;
@@ -48,12 +70,14 @@ export interface QRCodeDesign {
     padding: number; // 0 to 16 px
     shape: 'square' | 'circle' | 'none';
   };
+  frame?: QRFrameConfig;
   margin: number; // Quiet zone: 1 to 6
   errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
 }
 
 export interface UrlContent {
   url: string;
+  trackPreciseLocation?: boolean;
 }
 
 export interface TextContent {
@@ -136,6 +160,54 @@ export interface FileContent {
   fileUrl: string;
 }
 
+export interface LandingPageLink {
+  id: string;
+  title: string;
+  url: string;
+  description?: string;
+  icon?: string;
+  isActive: boolean;
+  isFeatured?: boolean;
+  clicksCount?: number;
+}
+
+export interface LandingPageSocial {
+  platform: string;
+  url: string;
+}
+
+export interface LandingPageDesign {
+  theme: 'modern-blue' | 'clean-white' | 'midnight-dark' | 'sunset-coral' | 'emerald-fresh' | 'neon-cyber' | 'ocean-breeze' | 'warm-amber';
+  layoutTemplate?: 'minimal' | 'business' | 'creative';
+  buttonStyle: 'rounded' | 'pill' | 'sharp';
+  buttonVariant: 'filled' | 'outline' | 'soft' | 'glass';
+  primaryColor: string;
+  backgroundColor: string;
+  textColor: string;
+  fontFamily: 'Noto Sans' | 'Rubik' | 'Plus Jakarta Sans' | 'Space Grotesk' | 'Playfair Display';
+  coverImage?: string;
+  avatarShape: 'circle' | 'rounded' | 'square';
+}
+
+export interface LandingPageData {
+  slug: string;
+  title: string;
+  bio: string;
+  avatarUrl?: string;
+  coverUrl?: string;
+  badge?: string;
+  links: LandingPageLink[];
+  socials: LandingPageSocial[];
+  contact?: {
+    email?: string;
+    phone?: string;
+    whatsapp?: string;
+    location?: string;
+    website?: string;
+  };
+  design: LandingPageDesign;
+}
+
 export type QRCodeContent =
   | UrlContent
   | TextContent
@@ -149,7 +221,8 @@ export type QRCodeContent =
   | EventContent
   | SocialContent
   | AppLinksContent
-  | FileContent;
+  | FileContent
+  | LandingPageData;
 
 export interface QRCodeRecord {
   id: string;
@@ -158,8 +231,9 @@ export interface QRCodeRecord {
   type: QRCodeType;
   mode: QRCodeMode;
   content: Record<string, any>;
-  slug?: string; // Redirect slug for editable mode e.g. "X7PA91"
+  slug?: string; // Redirect slug for editable mode e.g. "landingpageurl"
   destination_url?: string; // Target URL for editable redirect
+  landing_page?: LandingPageData; // Landing page customization
   design: QRCodeDesign;
   is_active: boolean;
   scans_count: number;
@@ -174,6 +248,12 @@ export interface QRScanRecord {
   referrer: string;
   user_agent: string;
   device_type: 'mobile' | 'tablet' | 'desktop' | 'unknown';
+  country?: string;
+  country_code?: string;
+  city?: string;
+  browser?: string;
+  os?: string;
+  ip?: string;
 }
 
 export interface UserProfile {

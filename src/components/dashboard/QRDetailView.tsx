@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { QRCodeRecord } from '../../types';
 import { renderQRToCanvas, formatQRContent, generateQRSVG } from '../../lib/qr/generator';
 import { getSiteUrl } from '../../lib/config';
+import { QRScanAnalytics } from './QRScanAnalytics';
 import {
   ArrowLeft,
   Edit,
@@ -32,20 +33,25 @@ export const QRDetailView: React.FC<QRDetailViewProps> = ({
   onDuplicate,
   onDelete
 }) => {
+  const [currentQR, setCurrentQR] = useState<QRCodeRecord>(qr);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedDest, setCopiedDest] = useState(false);
 
-  const isEditable = qr.mode === 'editable';
-  const redirectUrl = isEditable && qr.slug
-    ? `${getSiteUrl()}/r/${qr.slug}`
+  useEffect(() => {
+    setCurrentQR(qr);
+  }, [qr]);
+
+  const isEditable = currentQR.mode === 'editable';
+  const redirectUrl = isEditable && currentQR.slug
+    ? `${getSiteUrl()}/r/${currentQR.slug}`
     : '';
 
   const formattedContent = formatQRContent(
-    qr.type,
-    qr.content,
-    qr.mode,
-    qr.slug,
+    currentQR.type,
+    currentQR.content,
+    currentQR.mode,
+    currentQR.slug,
     getSiteUrl()
   );
 
@@ -135,32 +141,30 @@ export const QRDetailView: React.FC<QRDetailViewProps> = ({
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#f1f5f9] text-[#111827]">
-                  {qr.type}
+                  {currentQR.type}
                 </span>
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                   isEditable ? 'bg-[#13b8a6]/15 text-[#0f766e]' : 'bg-[#f1f5f9] text-[#64748b]'
                 }`}>
                   {isEditable ? 'Editable Dynamic QR' : 'Static QR'}
                 </span>
-                {isEditable && (
-                  <span className="text-xs text-[#6d5dfc] font-medium flex items-center gap-1 ml-auto">
-                    <BarChart2 className="w-3.5 h-3.5" />
-                    {qr.scans_count || 0} scans
-                  </span>
-                )}
+                <span className="text-xs text-[#6d5dfc] font-medium flex items-center gap-1 ml-auto">
+                  <BarChart2 className="w-3.5 h-3.5" />
+                  {currentQR.scans_count || 0} scans
+                </span>
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-bold text-[#111827] tracking-tight">
-                {qr.name}
+                {currentQR.name}
               </h1>
 
               <div className="mt-2 flex items-center gap-4 text-xs text-[#94a3b8]">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />
-                  Created {new Date(qr.created_at).toLocaleDateString()}
+                  Created {new Date(currentQR.created_at).toLocaleDateString()}
                 </span>
                 <span>•</span>
-                <span>Updated {new Date(qr.updated_at || qr.created_at).toLocaleDateString()}</span>
+                <span>Updated {new Date(currentQR.updated_at || currentQR.created_at).toLocaleDateString()}</span>
               </div>
             </div>
 
@@ -242,24 +246,24 @@ export const QRDetailView: React.FC<QRDetailViewProps> = ({
             {/* Action Buttons */}
             <div className="pt-4 border-t border-[#f1f5f9] flex flex-wrap items-center gap-3">
               <button
-                onClick={() => onEdit(qr)}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#6d5dfc] hover:bg-[#5a49ef] shadow-sm shadow-[#6d5dfc]/20 transition"
+                onClick={() => onEdit(currentQR)}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#6d5dfc] hover:bg-[#5a49ef] shadow-sm shadow-[#6d5dfc]/20 transition cursor-pointer"
               >
                 <Edit className="w-4 h-4" />
                 <span>Edit QR & Destination</span>
               </button>
 
               <button
-                onClick={() => onDuplicate(qr)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-[#111827] bg-white border border-[#cbd5e1] hover:bg-[#f8fafc] transition"
+                onClick={() => onDuplicate(currentQR)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-[#111827] bg-white border border-[#cbd5e1] hover:bg-[#f8fafc] transition cursor-pointer"
               >
                 <Copy className="w-4 h-4 text-[#64748b]" />
                 <span>Duplicate</span>
               </button>
 
               <button
-                onClick={() => onDelete(qr)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition ml-auto"
+                onClick={() => onDelete(currentQR)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition ml-auto cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Delete QR</span>
@@ -268,6 +272,14 @@ export const QRDetailView: React.FC<QRDetailViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Scan Tracking & Analytics Dashboard */}
+      <QRScanAnalytics
+        qr={currentQR}
+        onScanCountUpdated={(newCount) => {
+          setCurrentQR(prev => ({ ...prev, scans_count: newCount }));
+        }}
+      />
     </div>
   );
 };

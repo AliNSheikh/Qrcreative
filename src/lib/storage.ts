@@ -1,5 +1,6 @@
 import { QRCodeRecord, QRScanRecord } from '../types';
 import { isSupabaseConfigured, supabase, ensureSupabaseInitialized } from './supabase/client';
+import { detectClientLocation, getCountryName } from './geo';
 
 const LOCAL_QR_KEY = 'qrcreative_qr_codes';
 const LOCAL_SCANS_KEY = 'qrcreative_scans';
@@ -99,13 +100,18 @@ export async function saveQRCode(
   if (isSupabaseConfigured && supabase) {
     if (record.id) {
       // Update
+      const contentToSave = {
+        ...(record.content || {}),
+        landingPage: record.landing_page || record.content?.landingPage
+      };
+
       const { data, error } = await supabase
         .from('qr_codes')
         .update({
           name: record.name,
           type: record.type,
           mode: record.mode,
-          content: record.content,
+          content: contentToSave,
           slug,
           destination_url,
           design: record.design,
@@ -117,9 +123,16 @@ export async function saveQRCode(
         .single();
 
       if (error) throw new Error(error.message);
-      return data as QRCodeRecord;
+      const resData = data as QRCodeRecord;
+      resData.landing_page = resData.content?.landingPage || record.landing_page;
+      return resData;
     } else {
       // Insert
+      const contentToSave = {
+        ...(record.content || {}),
+        landingPage: record.landing_page || record.content?.landingPage
+      };
+
       const { data, error } = await supabase
         .from('qr_codes')
         .insert({
@@ -127,7 +140,7 @@ export async function saveQRCode(
           name: record.name,
           type: record.type,
           mode: record.mode,
-          content: record.content,
+          content: contentToSave,
           slug,
           destination_url,
           design: record.design,
@@ -140,7 +153,9 @@ export async function saveQRCode(
         .single();
 
       if (error) throw new Error(error.message);
-      return data as QRCodeRecord;
+      const resData = data as QRCodeRecord;
+      resData.landing_page = resData.content?.landingPage || record.landing_page;
+      return resData;
     }
   }
 
@@ -236,11 +251,64 @@ export async function getQRCodeById(id: string): Promise<QRCodeRecord | null> {
       .single();
 
     if (error) return null;
-    return data as QRCodeRecord;
+    const record = data as QRCodeRecord;
+    record.landing_page = record.content?.landingPage || record.landing_page;
+    return record;
   }
 
   const all = getLocalQRCodes();
-  return all.find(c => c.id === id) || null;
+  const record = all.find(c => c.id === id) || null;
+  if (record) {
+    record.landing_page = record.content?.landingPage || record.landing_page;
+  }
+  return record;
+}
+
+// Fetch a single QR code by its unique slug (e.g. for landing page view)
+export async function getQRCodeBySlug(slug: string): Promise<QRCodeRecord | null> {
+  if (!slug) return null;
+  const cleanSlug = slug.trim().toLowerCase();
+
+  // 1. Try server API route if available
+  try {
+    const res = await fetch(`/api/qr/slug/${encodeURIComponent(cleanSlug)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.id) {
+        data.landing_page = data.content?.landingPage || data.landing_page;
+        return data as QRCodeRecord;
+      }
+    }
+  } catch {
+    // Non-blocking, fallback to direct supabase / local
+  }
+
+  // 2. Direct Supabase query
+  if (!isSupabaseConfigured) {
+    await ensureSupabaseInitialized();
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('qr_codes')
+      .select('*')
+      .ilike('slug', cleanSlug)
+      .maybeSingle();
+
+    if (!error && data) {
+      const record = data as QRCodeRecord;
+      record.landing_page = record.content?.landingPage || record.landing_page;
+      return record;
+    }
+  }
+
+  // 3. Fallback to local storage
+  const all = getLocalQRCodes();
+  const localRecord = all.find(c => (c.slug || '').trim().toLowerCase() === cleanSlug) || null;
+  if (localRecord) {
+    localRecord.landing_page = localRecord.content?.landingPage || localRecord.landing_page;
+  }
+  return localRecord;
 }
 
 // Duplicate a QR code
@@ -296,33 +364,97 @@ export async function deleteQRCode(id: string): Promise<boolean> {
   return true;
 }
 
-// Record a scan event
+export interface ScanMetadata {
+  referrer?: string;
+  user_agent?: string;
+  device_type?: 'mobile' | 'tablet' | 'desktop' | 'unknown';
+  country?: string;
+  country_code?: string;
+  city?: string;
+}
+
+// Record a scan event with automatic or supplied country location
 export async function recordScanEvent(
   qrCodeId: string,
-  metadata: { referrer?: string; user_agent?: string; device_type?: 'mobile' | 'tablet' | 'desktop' | 'unknown' }
-): Promise<void> {
+  metadata?: ScanMetadata
+): Promise<QRScanRecord> {
+  const now = new Date().toISOString();
+
+  // Resolve location if not provided
+  let country = metadata?.country;
+  let country_code = metadata?.country_code;
+  let city = metadata?.city;
+
+  if (!country || !country_code) {
+    try {
+      const geo = await detectClientLocation();
+      country = country || geo.country;
+      country_code = country_code || geo.country_code;
+      city = city || geo.city;
+    } catch {
+      country = country || 'United States';
+      country_code = country_code || 'US';
+    }
+  }
+
+  const device_type = metadata?.device_type || (typeof window !== 'undefined' && window.innerWidth < 768 ? 'mobile' : 'desktop');
+  const user_agent = metadata?.user_agent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const referrer = metadata?.referrer || (typeof document !== 'undefined' ? document.referrer : '');
+
+  const scanRecord: QRScanRecord = {
+    id: 'scn_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+    qr_code_id: qrCodeId,
+    scanned_at: now,
+    referrer,
+    user_agent,
+    device_type,
+    country: country || getCountryName(country_code) || 'United States',
+    country_code: (country_code || 'US').toUpperCase(),
+    city
+  };
+
+  // 1. Post to server endpoint to sync in-memory store
+  try {
+    fetch(`/api/qr/${encodeURIComponent(qrCodeId)}/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        country: scanRecord.country,
+        country_code: scanRecord.country_code,
+        city: scanRecord.city,
+        referrer,
+        user_agent,
+        device_type
+      })
+    }).catch(() => {});
+  } catch {
+    // Non-blocking
+  }
+
+  // 2. If Supabase is configured, insert to Supabase
   if (!isSupabaseConfigured) {
     await ensureSupabaseInitialized();
   }
 
   if (isSupabaseConfigured && supabase) {
-    await supabase.from('qr_scans').insert({
-      qr_code_id: qrCodeId,
-      referrer: metadata.referrer || '',
-      user_agent: metadata.user_agent || '',
-      device_type: metadata.device_type || 'unknown',
-      scanned_at: new Date().toISOString()
-    });
-    // Increment scans count on qr_codes
     try {
+      await supabase.from('qr_scans').insert({
+        qr_code_id: qrCodeId,
+        referrer,
+        user_agent,
+        device_type,
+        country: scanRecord.country,
+        country_code: scanRecord.country_code,
+        city: scanRecord.city,
+        scanned_at: now
+      });
       await supabase.rpc('increment_qr_scans', { qrid: qrCodeId });
-    } catch {
-      // Fallback
+    } catch (e) {
+      console.warn('Supabase scan insert notice:', e);
     }
-    return;
   }
 
-  // Local storage
+  // 3. Update local storage
   const codes = getLocalQRCodes();
   const idx = codes.findIndex(c => c.id === qrCodeId);
   if (idx >= 0) {
@@ -333,14 +465,104 @@ export async function recordScanEvent(
   if (typeof window !== 'undefined') {
     const raw = localStorage.getItem(LOCAL_SCANS_KEY);
     const scans: QRScanRecord[] = raw ? JSON.parse(raw) : [];
-    scans.push({
-      id: 'scn_' + Math.random().toString(36).substring(2, 9),
-      qr_code_id: qrCodeId,
-      scanned_at: new Date().toISOString(),
-      referrer: metadata.referrer || '',
-      user_agent: metadata.user_agent || '',
-      device_type: metadata.device_type || 'unknown'
-    });
-    localStorage.setItem(LOCAL_SCANS_KEY, JSON.stringify(scans.slice(-200)));
+    scans.unshift(scanRecord);
+    localStorage.setItem(LOCAL_SCANS_KEY, JSON.stringify(scans.slice(0, 500)));
+  }
+
+  return scanRecord;
+}
+
+// Retrieve all recorded scans for a given QR code
+export async function getScanRecords(qrCodeId: string): Promise<QRScanRecord[]> {
+  const combinedMap = new Map<string, QRScanRecord>();
+
+  // 1. Check local storage
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem(LOCAL_SCANS_KEY);
+    if (raw) {
+      try {
+        const localScans: QRScanRecord[] = JSON.parse(raw);
+        for (const s of localScans) {
+          if (s.qr_code_id === qrCodeId) {
+            combinedMap.set(s.id, s);
+          }
+        }
+      } catch {
+        // Ignored
+      }
+    }
+  }
+
+  // 2. Fetch from backend server API
+  try {
+    const res = await fetch(`/api/qr/${encodeURIComponent(qrCodeId)}/scans`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.scans)) {
+        for (const s of data.scans) {
+          if (s.qr_code_id === qrCodeId || !s.qr_code_id) {
+            combinedMap.set(s.id, { ...s, qr_code_id: qrCodeId });
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-blocking
+  }
+
+  // 3. Fetch from Supabase if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('qr_scans')
+        .select('*')
+        .eq('qr_code_id', qrCodeId)
+        .order('scanned_at', { ascending: false })
+        .limit(250);
+
+      if (!error && data) {
+        for (const s of data) {
+          combinedMap.set(s.id, s as QRScanRecord);
+        }
+      }
+    } catch {
+      // Ignored
+    }
+  }
+
+  const allScans = Array.from(combinedMap.values());
+  allScans.sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime());
+  return allScans;
+}
+
+// Clear all recorded scans for a specific QR code
+export async function clearScansForQR(qrCodeId: string): Promise<void> {
+  const codes = getLocalQRCodes();
+  const idx = codes.findIndex(c => c.id === qrCodeId);
+  if (idx >= 0) {
+    codes[idx].scans_count = 0;
+    saveLocalQRCodes(codes);
+  }
+
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem(LOCAL_SCANS_KEY);
+    if (raw) {
+      try {
+        const localScans: QRScanRecord[] = JSON.parse(raw);
+        const filtered = localScans.filter(s => s.qr_code_id !== qrCodeId);
+        localStorage.setItem(LOCAL_SCANS_KEY, JSON.stringify(filtered));
+      } catch {
+        // Ignored
+      }
+    }
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('qr_scans').delete().eq('qr_code_id', qrCodeId);
+      await supabase.from('qr_codes').update({ scans_count: 0 }).eq('id', qrCodeId);
+    } catch {
+      // Ignored
+    }
   }
 }

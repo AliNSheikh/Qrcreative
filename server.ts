@@ -49,7 +49,74 @@ interface RedirectItem {
   name?: string;
 }
 
+export interface ScanRecordItem {
+  id: string;
+  qr_code_id: string;
+  scanned_at: string;
+  referrer: string;
+  user_agent: string;
+  device_type: 'mobile' | 'tablet' | 'desktop' | 'unknown';
+  country?: string;
+  country_code?: string;
+  city?: string;
+  browser?: string;
+  os?: string;
+  ip?: string;
+}
+
 const redirectStore = new Map<string, RedirectItem>();
+const scanStore = new Map<string, ScanRecordItem[]>();
+
+const SERVER_COUNTRY_NAMES: Record<string, string> = {
+  US: 'United States',
+  GB: 'United Kingdom',
+  CA: 'Canada',
+  AU: 'Australia',
+  DE: 'Germany',
+  FR: 'France',
+  JP: 'Japan',
+  IN: 'India',
+  BR: 'Brazil',
+  ES: 'Spain',
+  IT: 'Italy',
+  NL: 'Netherlands',
+  SE: 'Sweden',
+  CH: 'Switzerland',
+  SG: 'Singapore',
+  AE: 'United Arab Emirates',
+  ZA: 'South Africa',
+  MX: 'Mexico'
+};
+
+function extractCountryFromReq(req: express.Request): { country: string; country_code: string; city?: string } {
+  const cfCountry = req.headers['cf-ipcountry'] as string;
+  const xCountry = (req.headers['x-country-code'] || req.headers['x-appengine-country'] || req.headers['geoip-country-code']) as string;
+  const rawCode = (cfCountry || xCountry || '').trim().toUpperCase();
+
+  if (rawCode && rawCode !== 'XX' && rawCode.length === 2) {
+    return {
+      country_code: rawCode,
+      country: SERVER_COUNTRY_NAMES[rawCode] || rawCode,
+      city: (req.headers['x-appengine-city'] || req.headers['cf-ipcity'] || '') as string
+    };
+  }
+
+  // Accept-language check fallback e.g. "en-US,en;q=0.9" -> US
+  const acceptLang = (req.headers['accept-language'] as string) || '';
+  const match = acceptLang.match(/[a-z]{2}-([A-Z]{2})/);
+  if (match && match[1]) {
+    const code = match[1].toUpperCase();
+    return {
+      country_code: code,
+      country: SERVER_COUNTRY_NAMES[code] || code
+    };
+  }
+
+  return {
+    country_code: 'US',
+    country: 'United States'
+  };
+}
 
 // Helper to determine device category from user-agent
 function parseDeviceType(ua: string = ''): 'mobile' | 'tablet' | 'desktop' {
@@ -80,6 +147,35 @@ function isSafeProtocol(url: string): boolean {
 }
 
 // 1. Core Fast Server-Side Redirect Route /r/:slug
+app.get('/api/qr/slug/:slug', async (req, res) => {
+  const slug = (req.params.slug || '').trim().toLowerCase();
+  if (!slug) return res.status(400).json({ error: 'Slug required' });
+
+  if (supabaseServer) {
+    try {
+      const { data, error } = await supabaseServer
+        .from('qr_codes')
+        .select('*')
+        .ilike('slug', slug)
+        .maybeSingle();
+
+      if (!error && data) {
+        return res.json(data);
+      }
+    } catch (err) {
+      console.error('Error fetching slug from Supabase:', err);
+    }
+  }
+
+  // Check memory redirect store
+  const target = redirectStore.get(slug);
+  if (target) {
+    return res.json(target);
+  }
+
+  return res.status(404).json({ error: 'QR Code not found' });
+});
+
 app.get('/r/:slug', async (req, res) => {
   const slug = req.params.slug;
   if (!slug) {
@@ -178,10 +274,30 @@ app.get('/r/:slug', async (req, res) => {
     return res.status(400).send('Unsafe destination URL protocol detected.');
   }
 
-  // Record scan analytics asynchronously
-  const userAgent = req.headers['user-agent'] || '';
+  // Record scan analytics asynchronously with location/country
+  const userAgent = (req.headers['user-agent'] as string) || '';
   const referrer = (req.headers['referer'] as string) || '';
   const deviceType = parseDeviceType(userAgent);
+  const geo = extractCountryFromReq(req);
+  const qrId = target.id || slug;
+  const ip = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '').trim();
+
+  const scanItem: ScanRecordItem = {
+    id: 'scn_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+    qr_code_id: qrId,
+    scanned_at: new Date().toISOString(),
+    referrer: referrer.substring(0, 500),
+    user_agent: userAgent.substring(0, 500),
+    device_type: deviceType,
+    country: geo.country,
+    country_code: geo.country_code,
+    city: geo.city,
+    ip: ip.substring(0, 45)
+  };
+
+  const existingScans = scanStore.get(qrId) || [];
+  existingScans.unshift(scanItem);
+  scanStore.set(qrId, existingScans.slice(0, 500));
 
   if (target.id && supabaseServer) {
     (async () => {
@@ -191,7 +307,10 @@ app.get('/r/:slug', async (req, res) => {
           user_agent: userAgent.substring(0, 500),
           referrer: referrer.substring(0, 500),
           device_type: deviceType,
-          scanned_at: new Date().toISOString()
+          scanned_at: scanItem.scanned_at,
+          country: geo.country,
+          country_code: geo.country_code,
+          city: geo.city
         });
         await supabaseServer.rpc('increment_qr_scans', { qrid: target.id });
       } catch (err) {
@@ -279,7 +398,8 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Check if user already exists in auth.users
     const { data: userList } = await supabaseServer.auth.admin.listUsers();
-    if (userList?.users?.some(u => u.email?.toLowerCase() === cleanEmail)) {
+    const existingUsers = (userList as any)?.users || [];
+    if (existingUsers.some((u: any) => u.email?.toLowerCase() === cleanEmail)) {
       return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
     }
 
@@ -344,7 +464,8 @@ app.post('/api/auth/confirm-user', async (req, res) => {
     const { data, error } = await supabaseServer.auth.admin.listUsers();
     if (error) return res.status(500).json({ error: error.message });
 
-    const targetUser = data.users.find(u => u.email?.toLowerCase() === cleanEmail);
+    const allUsers: any[] = (data as any)?.users || [];
+    const targetUser = allUsers.find((u: any) => u.email?.toLowerCase() === cleanEmail);
     if (!targetUser) {
       return res.status(404).json({ error: 'User account not found.' });
     }
@@ -382,7 +503,8 @@ app.post('/api/auth/check-user', async (req, res) => {
     if (!email || !supabaseServer) return res.json({ exists: false });
     const cleanEmail = email.trim().toLowerCase();
     const { data } = await supabaseServer.auth.admin.listUsers();
-    const exists = Boolean(data?.users?.some(u => u.email?.toLowerCase() === cleanEmail));
+    const checkUsers: any[] = (data as any)?.users || [];
+    const exists = Boolean(checkUsers.some((u: any) => u.email?.toLowerCase() === cleanEmail));
     return res.json({ exists });
   } catch {
     return res.json({ exists: false });
@@ -405,7 +527,8 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     // Verify user exists in Supabase auth.users
     const { data: userList } = await supabaseServer.auth.admin.listUsers();
-    const userFound = userList?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+    const resetUsers: any[] = (userList as any)?.users || [];
+    const userFound = resetUsers.find((u: any) => u.email?.toLowerCase() === cleanEmail);
     if (!userFound) {
       return res.status(404).json({ error: 'No account found with this email address. Please check spelling or create a new free account.' });
     }
@@ -476,7 +599,107 @@ app.delete('/api/qr/:id', (req, res) => {
       redirectStore.delete(slug);
     }
   }
+  scanStore.delete(id);
   res.json({ success: true });
+});
+
+// Geo detect endpoint for clients
+app.get('/api/geo/detect', (req, res) => {
+  const geo = extractCountryFromReq(req);
+  const ip = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '').trim();
+  res.json({
+    country: geo.country,
+    country_code: geo.country_code,
+    city: geo.city,
+    ip: ip.substring(0, 45)
+  });
+});
+
+// Record a scan event for a QR code (from landing page, direct scan, or test)
+app.post('/api/qr/:id/scan', async (req, res) => {
+  const qrId = req.params.id;
+  if (!qrId) return res.status(400).json({ error: 'QR Code ID is required' });
+
+  const { country, country_code, city, referrer, user_agent, device_type } = req.body || {};
+  const detectedGeo = extractCountryFromReq(req);
+  const ip = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '').trim();
+  const ua = (user_agent || req.headers['user-agent'] || '').toString();
+
+  const finalCountryCode = (country_code || detectedGeo.country_code || 'US').toString().toUpperCase().substring(0, 2);
+  const finalCountry = country || SERVER_COUNTRY_NAMES[finalCountryCode] || detectedGeo.country || 'United States';
+  const finalCity = city || detectedGeo.city;
+  const finalDevice = device_type || parseDeviceType(ua);
+
+  const scanItem: ScanRecordItem = {
+    id: 'scn_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+    qr_code_id: qrId,
+    scanned_at: new Date().toISOString(),
+    referrer: (referrer || (req.headers['referer'] as string) || '').toString().substring(0, 500),
+    user_agent: ua.substring(0, 500),
+    device_type: finalDevice,
+    country: finalCountry,
+    country_code: finalCountryCode,
+    city: finalCity,
+    ip: ip.substring(0, 45)
+  };
+
+  // Add to memory scan store
+  const list = scanStore.get(qrId) || [];
+  list.unshift(scanItem);
+  scanStore.set(qrId, list.slice(0, 500));
+
+  // Sync to Supabase if connected
+  if (supabaseServer) {
+    try {
+      await supabaseServer.from('qr_scans').insert({
+        qr_code_id: qrId,
+        user_agent: scanItem.user_agent,
+        referrer: scanItem.referrer,
+        device_type: scanItem.device_type,
+        scanned_at: scanItem.scanned_at,
+        country: scanItem.country,
+        country_code: scanItem.country_code,
+        city: scanItem.city
+      });
+      await supabaseServer.rpc('increment_qr_scans', { qrid: qrId });
+    } catch (err) {
+      console.error('Supabase scan log error:', err);
+    }
+  }
+
+  res.json({ success: true, scan: scanItem, count: list.length });
+});
+
+// Retrieve all recorded scans for a QR code
+app.get('/api/qr/:id/scans', async (req, res) => {
+  const qrId = req.params.id;
+  if (!qrId) return res.status(400).json({ error: 'QR Code ID is required' });
+
+  let memoryScans = scanStore.get(qrId) || [];
+
+  if (supabaseServer) {
+    try {
+      const { data, error } = await supabaseServer
+        .from('qr_scans')
+        .select('*')
+        .eq('qr_code_id', qrId)
+        .order('scanned_at', { ascending: false })
+        .limit(300);
+
+      if (!error && data && data.length > 0) {
+        const set = new Set(data.map((d: any) => d.id));
+        const combined = [...data];
+        for (const s of memoryScans) {
+          if (!set.has(s.id)) combined.push(s);
+        }
+        memoryScans = combined;
+      }
+    } catch (err) {
+      console.warn('Could not query Supabase scans:', err);
+    }
+  }
+
+  res.json({ scans: memoryScans, count: memoryScans.length });
 });
 
 function escapeHtml(str: string): string {

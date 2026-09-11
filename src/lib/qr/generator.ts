@@ -6,7 +6,7 @@ import { getSiteUrl } from '../config';
 export function formatQRContent(
   type: QRCodeType,
   content: Record<string, any>,
-  mode: QRCodeMode,
+  mode: QRCodeMode = 'static',
   slug?: string,
   siteUrl?: string
 ): string {
@@ -182,6 +182,36 @@ function isFinderPattern(r: number, c: number, moduleCount: number): { isFinder:
   return { isFinder: false, isOuter: false, isCenter: false };
 }
 
+// Helper to draw text along circular arc
+function drawCurvedArcText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  startAngle: number,
+  letterSpacing: number = 0.14,
+  inward: boolean = false
+) {
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  const totalAngle = (text.length - 1) * letterSpacing;
+  let currentAngle = startAngle - totalAngle / 2;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    ctx.save();
+    ctx.rotate(currentAngle);
+    ctx.translate(0, inward ? radius : -radius);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(char, 0, 0);
+    ctx.restore();
+    currentAngle += letterSpacing;
+  }
+  ctx.restore();
+}
+
 // Render styled QR code to canvas
 export async function renderQRToCanvas(
   canvas: HTMLCanvasElement,
@@ -196,12 +226,41 @@ export async function renderQRToCanvas(
   const moduleCount = qrData.modules.size;
   const margin = design.margin ?? 3;
   const totalCells = moduleCount + margin * 2;
-  const cellSize = size / totalCells;
 
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+
+  const frameStyle = design.frame?.style || 'none';
+  const hasFrame = frameStyle !== 'none';
+
+  let qrOffsetX = 0;
+  let qrOffsetY = 0;
+  let qrRenderSize = size;
+
+  if (hasFrame) {
+    if (frameStyle === 'sticker-badge-teal') {
+      qrRenderSize = Math.round(size * 0.72);
+      qrOffsetX = Math.round((size - qrRenderSize) / 2);
+      qrOffsetY = Math.round(size * 0.09);
+    } else if (frameStyle === 'frame-bottom-bar') {
+      qrRenderSize = Math.round(size * 0.72);
+      qrOffsetX = Math.round((size - qrRenderSize) / 2);
+      qrOffsetY = Math.round(size * 0.08);
+    } else if (frameStyle === 'frame-top-bar') {
+      qrRenderSize = Math.round(size * 0.72);
+      qrOffsetX = Math.round((size - qrRenderSize) / 2);
+      qrOffsetY = Math.round(size * 0.20);
+    } else {
+      // Circular stickers (rainbow or red)
+      qrRenderSize = Math.round(size * 0.65);
+      qrOffsetX = Math.round((size - qrRenderSize) / 2);
+      qrOffsetY = Math.round((size - qrRenderSize) / 2);
+    }
+  }
+
+  const cellSize = qrRenderSize / totalCells;
 
   // Background
   if (design.backgroundColor === 'transparent') {
@@ -211,20 +270,171 @@ export async function renderQRToCanvas(
     ctx.fillRect(0, 0, size, size);
   }
 
+  // Draw Frame / Sticker Backdrop if enabled
+  if (hasFrame) {
+    if (frameStyle === 'sticker-rainbow') {
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const outerR = size * 0.46;
+      const innerR = size * 0.36;
+
+      // Outer rainbow ring
+      const ringWidth = size * 0.07;
+      const rainbowGrad = ctx.createLinearGradient(0, 0, size, size);
+      rainbowGrad.addColorStop(0, '#ec4899');
+      rainbowGrad.addColorStop(0.2, '#8b5cf6');
+      rainbowGrad.addColorStop(0.4, '#3b82f6');
+      rainbowGrad.addColorStop(0.6, '#06b6d4');
+      rainbowGrad.addColorStop(0.8, '#10b981');
+      rainbowGrad.addColorStop(1, '#f59e0b');
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, outerR, 0, Math.PI * 2);
+      ctx.lineWidth = ringWidth;
+      ctx.strokeStyle = rainbowGrad;
+      ctx.stroke();
+
+      // Inner white backdrop
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, innerR + 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Top text "SCAN ME"
+      ctx.fillStyle = '#db2777';
+      ctx.font = `900 ${Math.round(size * 0.038)}px system-ui, -apple-system, sans-serif`;
+      drawCurvedArcText(ctx, 'SCAN ME', centerX, centerY, outerR, 0, 0.15, false);
+
+      // Bottom text "SCAN ME"
+      ctx.fillStyle = '#2563eb';
+      drawCurvedArcText(ctx, 'SCAN ME', centerX, centerY, outerR, Math.PI, 0.15, true);
+      ctx.restore();
+    } else if (frameStyle === 'sticker-circle-red') {
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const outerR = size * 0.46;
+      const innerR = size * 0.36;
+      const ringWidth = size * 0.075;
+
+      ctx.save();
+      // Red ring
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, outerR, 0, Math.PI * 2);
+      ctx.lineWidth = ringWidth;
+      ctx.strokeStyle = '#ef4444';
+      ctx.stroke();
+
+      // Inner circle white
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, innerR + 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Text along red rim
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `900 ${Math.round(size * 0.038)}px system-ui, -apple-system, sans-serif`;
+      drawCurvedArcText(ctx, 'SCAN ME', centerX, centerY, outerR, 0, 0.15, false);
+      drawCurvedArcText(ctx, 'SCAN ME', centerX, centerY, outerR, Math.PI, 0.15, true);
+      ctx.restore();
+    } else if (frameStyle === 'sticker-badge-teal') {
+      const cardW = size * 0.90;
+      const cardH = size * 0.92;
+      const cardX = (size - cardW) / 2;
+      const cardY = (size - cardH) / 2;
+
+      ctx.save();
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(cardX, cardY, cardW, cardH, size * 0.06);
+      } else {
+        ctx.rect(cardX, cardY, cardW, cardH);
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = size * 0.024;
+      ctx.strokeStyle = '#0d9488';
+      ctx.stroke();
+
+      // Bottom pill badge
+      const pillW = size * 0.62;
+      const pillH = size * 0.10;
+      const pillX = (size - pillW) / 2;
+      const pillY = size * 0.81;
+
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(pillX, pillY, pillW, pillH, pillH / 2);
+      } else {
+        ctx.rect(pillX, pillY, pillW, pillH);
+      }
+      ctx.fillStyle = '#0d9488';
+      ctx.fill();
+
+      // Badge text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(size * 0.036)}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(design.frame?.text || 'Scan To Save', size / 2, pillY + pillH / 2);
+      ctx.restore();
+    } else if (frameStyle === 'frame-bottom-bar') {
+      const barColor = design.frame?.color || '#3b82f6';
+      const cardW = size * 0.90;
+      const cardH = size * 0.92;
+      const cardX = (size - cardW) / 2;
+      const cardY = (size - cardH) / 2;
+
+      ctx.save();
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(cardX, cardY, cardW, cardH, size * 0.05);
+      } else {
+        ctx.rect(cardX, cardY, cardW, cardH);
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = size * 0.02;
+      ctx.strokeStyle = barColor;
+      ctx.stroke();
+
+      // Bottom banner
+      const bannerH = size * 0.12;
+      const bannerY = cardY + cardH - bannerH;
+      ctx.beginPath();
+      ctx.fillStyle = barColor;
+      ctx.fillRect(cardX, bannerY, cardW, bannerH);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(size * 0.040)}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(design.frame?.text || 'SCAN ME', size / 2, bannerY + bannerH / 2);
+      ctx.restore();
+    }
+  }
+
   // Create primary fill style (solid or gradient)
   let fillStyle: string | CanvasGradient = design.foregroundColor || '#111827';
   if (design.gradient?.enabled) {
     if (design.gradient.type === 'radial') {
-      const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 1.4);
+      const grad = ctx.createRadialGradient(
+        qrOffsetX + qrRenderSize / 2,
+        qrOffsetY + qrRenderSize / 2,
+        0,
+        qrOffsetX + qrRenderSize / 2,
+        qrOffsetY + qrRenderSize / 2,
+        qrRenderSize / 1.4
+      );
       grad.addColorStop(0, design.foregroundColor);
       grad.addColorStop(1, design.gradient.color2 || '#6d5dfc');
       fillStyle = grad;
     } else {
       const rad = ((design.gradient.angle || 45) * Math.PI) / 180;
-      const x2 = size / 2 + (Math.cos(rad) * size) / 2;
-      const y2 = size / 2 + (Math.sin(rad) * size) / 2;
-      const x1 = size / 2 - (Math.cos(rad) * size) / 2;
-      const y1 = size / 2 - (Math.sin(rad) * size) / 2;
+      const x2 = qrOffsetX + qrRenderSize / 2 + (Math.cos(rad) * qrRenderSize) / 2;
+      const y2 = qrOffsetY + qrRenderSize / 2 + (Math.sin(rad) * qrRenderSize) / 2;
+      const x1 = qrOffsetX + qrRenderSize / 2 - (Math.cos(rad) * qrRenderSize) / 2;
+      const y1 = qrOffsetY + qrRenderSize / 2 - (Math.sin(rad) * qrRenderSize) / 2;
       const grad = ctx.createLinearGradient(x1, y1, x2, y2);
       grad.addColorStop(0, design.foregroundColor);
       grad.addColorStop(1, design.gradient.color2 || '#6d5dfc');
@@ -264,8 +474,8 @@ export async function renderQRToCanvas(
       const isDark = qrData.modules.get(r, c);
       if (!isDark) continue;
 
-      const x = (c + margin) * cellSize;
-      const y = (r + margin) * cellSize;
+      const x = qrOffsetX + (c + margin) * cellSize;
+      const y = qrOffsetY + (r + margin) * cellSize;
 
       ctx.beginPath();
       switch (design.dotStyle) {
@@ -313,8 +523,8 @@ export async function renderQRToCanvas(
   ];
 
   for (const pos of finderPositions) {
-    const px = (pos.c + margin) * cellSize;
-    const py = (pos.r + margin) * cellSize;
+    const px = qrOffsetX + (pos.c + margin) * cellSize;
+    const py = qrOffsetY + (pos.r + margin) * cellSize;
     const finderSize = 7 * cellSize;
 
     // Clear background for finder box
@@ -377,11 +587,11 @@ export async function renderQRToCanvas(
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         const logoFrac = (design.logo.size || 22) / 100;
-        const logoPixelSize = size * (logoFrac * 0.88);
+        const logoPixelSize = qrRenderSize * (logoFrac * 0.88);
         const padding = design.logo.padding ?? 8;
         const badgeSize = logoPixelSize + padding * 2;
-        const bx = (size - badgeSize) / 2;
-        const by = (size - badgeSize) / 2;
+        const bx = qrOffsetX + (qrRenderSize - badgeSize) / 2;
+        const by = qrOffsetY + (qrRenderSize - badgeSize) / 2;
 
         ctx.save();
         // Badge shadow

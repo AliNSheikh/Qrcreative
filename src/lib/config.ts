@@ -28,7 +28,7 @@ let activeSiteUrl = staticSiteUrl;
  * Priority:
  * 1. Explicitly configured VITE_SITE_URL or NEXT_PUBLIC_SITE_URL
  * 2. In-browser dynamic origin (window.location.origin)
- * 3. Default fallback https://qrcreative.app
+ * 3. Default fallback https://qrcreative.vercel.app
  */
 export function getSiteUrl(): string {
   if (activeSiteUrl && activeSiteUrl.trim() !== '') {
@@ -37,7 +37,17 @@ export function getSiteUrl(): string {
   if (typeof window !== 'undefined' && window.location && window.location.origin) {
     return window.location.origin.replace(/\/$/, '');
   }
-  return 'https://qrcreative.app';
+  return 'https://qrcreative.vercel.app';
+}
+
+/**
+ * Returns the public landing page URL for a given slug.
+ * Specifically formats as: https://qrcreative.vercel.app/${slug}
+ */
+export function getLandingPageUrl(slug: string): string {
+  const cleanSlug = (slug || '').trim().replace(/^\//, '');
+  const base = 'https://qrcreative.vercel.app';
+  return `${base}/${cleanSlug}`;
 }
 
 export function setActiveSiteUrl(url: string): void {

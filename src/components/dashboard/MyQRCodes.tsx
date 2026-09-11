@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeRecord, UserProfile } from '../../types';
 import { getUserQRCodes, deleteQRCode, duplicateQRCode } from '../../lib/storage';
 import { renderQRToCanvas, formatQRContent } from '../../lib/qr/generator';
-import { getSiteUrl } from '../../lib/config';
+import { getSiteUrl, getLandingPageUrl } from '../../lib/config';
 import {
   Search,
   Filter,
@@ -91,9 +91,9 @@ export const MyQRCodes: React.FC<MyQRCodesProps> = ({
 
   // Copy destination or redirect link
   const handleCopyLink = (qr: QRCodeRecord) => {
-    const link = qr.mode === 'editable' && qr.slug
-      ? `${getSiteUrl()}/r/${qr.slug}`
-      : qr.destination_url || qr.content?.url || 'https://qrcreative.app';
+    const link = qr.slug
+      ? getLandingPageUrl(qr.slug)
+      : qr.destination_url || qr.content?.url || 'https://qrcreative.vercel.app';
 
     navigator.clipboard.writeText(link);
     setCopiedId(qr.id);
@@ -351,7 +351,7 @@ export const MyQRCodes: React.FC<MyQRCodesProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredList.map(qr => {
             const isEditable = qr.mode === 'editable';
-            const redirectUrl = isEditable && qr.slug ? `/r/${qr.slug}` : qr.destination_url || qr.content?.url;
+            const redirectUrl = qr.slug ? getLandingPageUrl(qr.slug) : (qr.destination_url || qr.content?.url || '');
 
             return (
               <div
@@ -512,7 +512,7 @@ export const MyQRCodes: React.FC<MyQRCodesProps> = ({
                       </span>
                     </td>
                     <td className="py-2.5 px-4 font-mono text-[11px] text-[#64748b] max-w-[200px] truncate">
-                      {qr.mode === 'editable' ? `/r/${qr.slug}` : (qr.destination_url || qr.content?.url)}
+                      {qr.slug ? getLandingPageUrl(qr.slug) : (qr.destination_url || qr.content?.url)}
                     </td>
                     <td className="py-2.5 px-4 font-semibold text-[#111827]">
                       {qr.scans_count || 0}

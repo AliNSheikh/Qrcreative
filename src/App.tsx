@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, QRCodeRecord, QRCodeType } from './types';
+import { UserProfile, QRCodeRecord, QRCodeType, LandingPageData } from './types';
 import { getCurrentUser, signOutUser, onAuthPasswordRecovery } from './lib/supabase/client';
-import { fetchRuntimeConfig } from './lib/config';
+import { fetchRuntimeConfig, getLandingPageUrl } from './lib/config';
+import { getQRCodeBySlug } from './lib/storage';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { Hero } from './components/marketing/Hero';
 import { QRGenerator } from './components/qr/QRGenerator';
+import { MyQRCodeGenerator } from './components/generator/MyQRCodeGenerator';
+import { LandingPageView } from './components/landing/LandingPageView';
 import { FeaturesSection } from './components/marketing/FeaturesSection';
 import { QRTypesSection } from './components/marketing/QRTypesSection';
 import { HowItWorks } from './components/marketing/HowItWorks';
@@ -17,7 +20,7 @@ import { AccountSettings } from './components/dashboard/AccountSettings';
 import { LegalViews } from './components/marketing/LegalViews';
 import { NotFoundView } from './components/marketing/NotFoundView';
 import { AuthModal } from './components/auth/AuthModal';
-import { CheckCircle2, Bookmark } from 'lucide-react';
+import { CheckCircle2, Bookmark, QrCode, Sparkles, Globe, ArrowRight } from 'lucide-react';
 
 export function App() {
   // Authentication State
@@ -30,12 +33,35 @@ export function App() {
   const [currentView, setCurrentView] = useState<string>('home');
   const [preselectedType, setPreselectedType] = useState<QRCodeType>('url');
 
+  // Landing Page Viewer State
+  const [landingQR, setLandingQR] = useState<QRCodeRecord | null>(null);
+  const [landingLoading, setLandingLoading] = useState(false);
+  const [landingSlug, setLandingSlug] = useState<string | null>(null);
+
   // Detail & Edit State
   const [selectedDetailQR, setSelectedDetailQR] = useState<QRCodeRecord | null>(null);
   const [editingQR, setEditingQR] = useState<QRCodeRecord | null>(null);
 
   // Global Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const loadLandingQR = async (slug: string) => {
+    setLandingLoading(true);
+    setLandingSlug(slug);
+    try {
+      const record = await getQRCodeBySlug(slug);
+      if (record) {
+        setLandingQR(record);
+      } else {
+        setLandingQR(null);
+      }
+    } catch (err) {
+      console.error('Failed to load landing page:', err);
+      setLandingQR(null);
+    } finally {
+      setLandingLoading(false);
+    }
+  };
 
   // Initialize Session
   useEffect(() => {
@@ -60,17 +86,29 @@ export function App() {
         setAuthModalOpen(true);
       }
 
-      // Check if URL has a hash or query route
-      const path = window.location.pathname.replace(/^\//, '');
-      if (path === 'create') setCurrentView('create');
-      else if (path === 'dashboard') setCurrentView('dashboard');
-      else if (path === 'articles') setCurrentView('articles');
-      else if (path === 'features') setCurrentView('features');
-      else if (path === 'qr-types') setCurrentView('qr-types');
-      else if (path === 'how-it-works') setCurrentView('how-it-works');
-      else if (path === 'faq') setCurrentView('faq');
-      else if (path === 'privacy') setCurrentView('privacy');
-      else if (path === 'terms') setCurrentView('terms');
+      // Check if URL path matches a page or a landing page slug
+      const rawPath = window.location.pathname.replace(/^\//, '');
+      if (rawPath) {
+        const parts = rawPath.split('/');
+        const first = parts[0];
+
+        if (first === 'create' || first === 'generator') {
+          if (parts[1]) {
+            setPreselectedType(parts[1] as QRCodeType);
+          }
+          setCurrentView('create');
+        } else if (first === 'r' && parts[1]) {
+          const slug = parts[1];
+          setCurrentView('landing');
+          loadLandingQR(slug);
+        } else if (['dashboard', 'articles', 'features', 'qr-types', 'how-it-works', 'faq', 'privacy', 'terms'].includes(first)) {
+          setCurrentView(first);
+        } else {
+          // Dynamic landing page URL: e.g. /landingpageurl
+          setCurrentView('landing');
+          loadLandingQR(first);
+        }
+      }
     }
 
     const unsubscribeRecovery = onAuthPasswordRecovery(() => {
@@ -153,14 +191,16 @@ export function App() {
         </div>
       )}
 
-      {/* Top Sticky Navigation */}
-      <Navbar
-        currentUser={currentUser}
-        onOpenAuth={(mode) => handleOpenAuth(mode || 'login')}
-        onSignOut={handleSignOut}
-        currentView={currentView}
-        onNavigate={handleNavigate}
-      />
+      {/* Top Sticky Navigation (hidden on standalone landing page) */}
+      {currentView !== 'landing' && (
+        <Navbar
+          currentUser={currentUser}
+          onOpenAuth={(mode) => handleOpenAuth(mode || 'login')}
+          onSignOut={handleSignOut}
+          currentView={currentView}
+          onNavigate={handleNavigate}
+        />
+      )}
 
       {/* Main View Router */}
       <main className="flex-1">
@@ -199,21 +239,10 @@ export function App() {
           </div>
         )}
 
-        {/* 2. CREATE QR WORKSPACE VIEW */}
+        {/* 2. CREATE QR WORKSPACE VIEW - Powered by MyQRCode Generator & Landing Page Studio */}
         {currentView === 'create' && (
-          <div className="py-8">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#111827] tracking-tight">
-                {editingQR ? `Edit QR Code: ${editingQR.name}` : 'Free QR Code Generator'}
-              </h1>
-              <p className="text-xs sm:text-sm text-[#64748b] mt-1">
-                {editingQR
-                  ? 'Update styling, colors, or destination without altering physical QR codes.'
-                  : 'Design custom QR codes with patterns, colors, and dynamic redirects.'}
-              </p>
-            </div>
-
-            <QRGenerator
+          <div className="py-6">
+            <MyQRCodeGenerator
               currentUser={currentUser}
               onOpenAuth={(prompt) => handleOpenAuth('register', prompt)}
               onQRSaved={handleQRSaved}
@@ -224,6 +253,63 @@ export function App() {
               }}
               initialType={preselectedType}
             />
+          </div>
+        )}
+
+        {/* 2.5. PUBLIC DYNAMIC LANDING PAGE VIEW: https://qrcreative.vercel.app/landingpageurl */}
+        {currentView === 'landing' && (
+          <div>
+            {landingLoading && (
+              <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-[#4981ff]/10 text-[#4981ff] flex items-center justify-center animate-pulse mb-4">
+                  <QrCode className="w-6 h-6 animate-spin" />
+                </div>
+                <h3 className="text-base font-bold text-[#0a0909]">Loading landing page...</h3>
+                <p className="text-xs text-[#84868e] mt-1 font-mono">
+                  {getLandingPageUrl(landingSlug || '')}
+                </p>
+              </div>
+            )}
+
+            {!landingLoading && landingQR && (
+              <LandingPageView
+                qr={landingQR}
+                onNavigateHome={() => handleNavigate('home')}
+                onCreateYourOwn={() => handleNavigate('create')}
+              />
+            )}
+
+            {!landingLoading && !landingQR && (
+              <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center max-w-lg mx-auto">
+                <div className="w-16 h-16 rounded-3xl bg-[#4981ff]/10 text-[#4981ff] flex items-center justify-center mb-4">
+                  <Globe className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-bold font-rubik text-[#0a0909]">
+                  This landing page is ready to be created!
+                </h2>
+                <p className="text-sm text-[#3f3e3e] mt-2 mb-6">
+                  The URL <span className="font-mono font-bold text-[#4981ff] bg-[#4981ff]/10 px-2 py-0.5 rounded">{getLandingPageUrl(landingSlug || 'page')}</span> is available. You can claim it, customize your links, and generate your QR code now.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+                  <button
+                    onClick={() => {
+                      setEditingQR(null);
+                      setCurrentView('create');
+                    }}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-[#4981ff] hover:bg-[#386fe3] text-white font-bold rounded-xl text-sm transition shadow-sm"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Create This Landing Page</span>
+                  </button>
+                  <button
+                    onClick={() => handleNavigate('home')}
+                    className="flex items-center justify-center gap-2 px-5 py-3 border border-[#e3e5ed] hover:bg-gray-50 text-[#0a0909] font-semibold rounded-xl text-sm transition"
+                  >
+                    <span>Back to Home</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -320,11 +406,13 @@ export function App() {
         )}
       </main>
 
-      {/* Footer */}
-      <Footer
-        onNavigate={handleNavigate}
-        onOpenAuth={(mode) => handleOpenAuth(mode)}
-      />
+      {/* Footer (hidden on standalone landing page) */}
+      {currentView !== 'landing' && (
+        <Footer
+          onNavigate={handleNavigate}
+          onOpenAuth={(mode) => handleOpenAuth(mode)}
+        />
+      )}
 
       {/* Authentication Modal */}
       <AuthModal
