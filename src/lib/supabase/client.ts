@@ -7,6 +7,11 @@ function sanitizeSupabaseUrl(url: string = ''): string {
   return url.trim().replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
 }
 
+// Default Supabase project credentials for qrcreative
+const DEFAULT_SUPABASE_URL = 'https://jktkyniasjiuvpmjzuix.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprdGt5bmlhc2ppdXZwbWp6dWl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNjU1NzcsImV4cCI6MjEwNDY0MTU3N30.FmHWBGeR9elTmIcy1NQxENlRlZdxRj6o_ZkamILSlEE';
+
 // Detect environment variables for Supabase
 const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
 const procEnv = typeof process !== 'undefined' ? process.env : undefined;
@@ -15,7 +20,7 @@ const rawSupabaseUrl =
   metaEnv?.VITE_SUPABASE_URL ||
   procEnv?.NEXT_PUBLIC_SUPABASE_URL ||
   procEnv?.VITE_SUPABASE_URL ||
-  '';
+  DEFAULT_SUPABASE_URL;
 
 const supabaseUrl = sanitizeSupabaseUrl(rawSupabaseUrl);
 
@@ -23,7 +28,7 @@ const supabaseAnonKey =
   metaEnv?.VITE_SUPABASE_ANON_KEY ||
   procEnv?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   procEnv?.VITE_SUPABASE_ANON_KEY ||
-  '';
+  DEFAULT_SUPABASE_ANON_KEY;
 
 export let isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -204,43 +209,46 @@ export async function signUpWithEmail(email: string, password: string, displayNa
   const cleanEmail = email.trim().toLowerCase();
   const name = displayName.trim() || cleanEmail.split('@')[0];
 
-  // 1. Primary: Server registration endpoint with instant email confirmation
+  // 1. Primary: Server registration endpoint with instant email confirmation (if server is running)
   try {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cleanEmail, password, displayName: name })
     });
-    const data = await res.json();
-    if (!res.ok) {
-      return { user: null, error: data.error || 'Registration failed' };
-    }
-    if (data.user) {
-      // Log in on this client browser to establish the active Supabase JWT session
-      if (!isSupabaseConfigured) {
-        await ensureSupabaseInitialized();
-      }
-      if (supabase) {
-        const { data: signData, error: signErr } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password
-        });
-        if (!signErr && signData.user) {
-          return {
-            user: {
-              id: signData.user.id,
-              email: signData.user.email || cleanEmail,
-              display_name: name,
-              created_at: signData.user.created_at
-            },
-            error: null
-          };
+    if (res.ok) {
+      const data = await res.json();
+      if (data.user) {
+        // Log in on this client browser to establish the active Supabase JWT session
+        if (!isSupabaseConfigured) {
+          await ensureSupabaseInitialized();
         }
+        if (supabase) {
+          const { data: signData, error: signErr } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password
+          });
+          if (!signErr && signData.user) {
+            return {
+              user: {
+                id: signData.user.id,
+                email: signData.user.email || cleanEmail,
+                display_name: name,
+                created_at: signData.user.created_at
+              },
+              error: null
+            };
+          }
+        }
+        return { user: data.user, error: null };
       }
-      return { user: data.user, error: null };
+    } else if (res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      return { user: null, error: data.error || 'An account with this email address already exists. Please sign in instead.' };
     }
+    // If status is 404, 502, etc. (e.g. static host on Vercel), fall through to Supabase client SDK below
   } catch (err: any) {
-    console.warn('Server registration notice, trying client SDK fallback:', err);
+    console.warn('Server registration notice, falling back to direct Supabase SDK:', err);
   }
 
   // 2. Client fallback via supabase.auth.signUp
