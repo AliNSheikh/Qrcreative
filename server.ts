@@ -258,6 +258,137 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Direct server-side registration with instant email confirmation
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, displayName } = req.body;
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+    if (!supabaseServer) {
+      return res.status(503).json({ error: 'Database service is currently unavailable.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const name = (displayName && typeof displayName === 'string' && displayName.trim())
+      ? displayName.trim()
+      : cleanEmail.split('@')[0];
+
+    // Check if user already exists in auth.users
+    const { data: userList } = await supabaseServer.auth.admin.listUsers();
+    if (userList?.users?.some(u => u.email?.toLowerCase() === cleanEmail)) {
+      return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+    }
+
+    // Create user via Admin API with email_confirm: true so they can log in instantly from any browser
+    const { data, error } = await supabaseServer.auth.admin.createUser({
+      email: cleanEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: name }
+    });
+
+    if (error) {
+      if (error.message.toLowerCase().includes('already registered') || error.status === 422) {
+        return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+      }
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (!data.user) {
+      return res.status(500).json({ error: 'Registration failed. Please try again.' });
+    }
+
+    // Ensure profile row in public.profiles table
+    try {
+      await supabaseServer.from('profiles').upsert({
+        id: data.user.id,
+        email: cleanEmail,
+        display_name: name,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    } catch (profileErr) {
+      console.warn('Profile upsert notice in /api/auth/register:', profileErr);
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: data.user.id,
+        email: cleanEmail,
+        display_name: name,
+        created_at: data.user.created_at
+      }
+    });
+  } catch (err: any) {
+    console.error('Error in /api/auth/register:', err);
+    return res.status(500).json({ error: err.message || 'Registration failed.' });
+  }
+});
+
+// Auto-confirm user if unconfirmed
+app.post('/api/auth/confirm-user', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+    if (!supabaseServer) {
+      return res.status(503).json({ error: 'Database service is unavailable.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const { data, error } = await supabaseServer.auth.admin.listUsers();
+    if (error) return res.status(500).json({ error: error.message });
+
+    const targetUser = data.users.find(u => u.email?.toLowerCase() === cleanEmail);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    // Confirm email
+    const updateRes = await supabaseServer.auth.admin.updateUserById(targetUser.id, {
+      email_confirm: true
+    });
+    if (updateRes.error) {
+      return res.status(500).json({ error: updateRes.error.message });
+    }
+
+    // Ensure profile row
+    try {
+      await supabaseServer.from('profiles').upsert({
+        id: targetUser.id,
+        email: cleanEmail,
+        display_name: targetUser.user_metadata?.display_name || cleanEmail.split('@')[0],
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    } catch {
+      // Ignored
+    }
+
+    return res.json({ success: true, message: 'Account confirmed successfully. You can now sign in.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Confirmation failed.' });
+  }
+});
+
+// Check if user exists in database
+app.post('/api/auth/check-user', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !supabaseServer) return res.json({ exists: false });
+    const cleanEmail = email.trim().toLowerCase();
+    const { data } = await supabaseServer.auth.admin.listUsers();
+    const exists = Boolean(data?.users?.some(u => u.email?.toLowerCase() === cleanEmail));
+    return res.json({ exists });
+  } catch {
+    return res.json({ exists: false });
+  }
+});
+
 // Sync a redirect slug into server memory
 app.post('/api/qr/sync', (req, res) => {
   const { id, slug, destination_url, is_active, name } = req.body;

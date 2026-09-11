@@ -78,11 +78,26 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
       if (!user) return null;
 
       // Query profiles table
-      const { data: profile } = await supabase
+      let { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
+
+      // Ensure row exists in public.profiles table
+      if (!profile && user.id) {
+        try {
+          const fallbackName = user.user_metadata?.display_name || user.email?.split('@')[0] || 'User';
+          await supabase.from('profiles').upsert({
+            id: user.id,
+            email: user.email || '',
+            display_name: fallbackName,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+        } catch {
+          // Ignored if handled by trigger or permission
+        }
+      }
 
       return {
         id: user.id,
@@ -116,15 +131,59 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { user: null, error: error.message };
+    let { data, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+
+    // If error is "Email not confirmed", auto-confirm via server and retry immediately
+    if (error && error.message.toLowerCase().includes('not confirmed')) {
+      try {
+        const confirmRes = await fetch('/api/auth/confirm-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim().toLowerCase() })
+        });
+        if (confirmRes.ok) {
+          const retry = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+          if (!retry.error && retry.data.user) {
+            data = retry.data;
+            error = null;
+          }
+        }
+      } catch {
+        // Continue with original error
+      }
+    }
+
+    if (error) {
+      if (error.message.toLowerCase().includes('invalid login credentials')) {
+        return {
+          user: null,
+          error: 'Invalid email or password. Please check your credentials or create a new account.'
+        };
+      }
+      return { user: null, error: error.message };
+    }
     if (!data.user) return { user: null, error: 'User not found' };
 
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
-      .single();
+      .maybeSingle();
+
+    // Auto-create profile row if it doesn't exist yet
+    if (!profile) {
+      try {
+        const fallbackName = data.user.user_metadata?.display_name || email.split('@')[0];
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: data.user.email || email,
+          display_name: fallbackName,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+      } catch (upsertErr) {
+        console.warn('Auto profile creation notice:', upsertErr);
+      }
+    }
 
     return {
       user: {
@@ -138,96 +197,108 @@ export async function signInWithEmail(email: string, password: string): Promise<
     };
   }
 
-  // Local fallback auth
-  if (typeof window !== 'undefined') {
-    const rawDb = localStorage.getItem(LOCAL_USERS_DB_KEY);
-    const users: Array<{ id: string; email: string; password: string; display_name: string; created_at: string }> = rawDb ? JSON.parse(rawDb) : [];
-    const matched = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-    if (!matched) {
-      // For immediate ease in the preview demo: if user has no account yet, let's allow them to register, or if they type password, handle smoothly
-      return { user: null, error: 'Invalid email or password. Please check your credentials or create a new free account.' };
-    }
-    if (matched.password !== password) {
-      return { user: null, error: 'Incorrect password.' };
-    }
-
-    const userProfile: UserProfile = {
-      id: matched.id,
-      email: matched.email,
-      display_name: matched.display_name,
-      created_at: matched.created_at
-    };
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(userProfile));
-    return { user: userProfile, error: null };
-  }
-
-  return { user: null, error: 'Authentication service unavailable' };
+  return { user: null, error: 'Connecting to database... Please reload the page and try again.' };
 }
 
 export async function signUpWithEmail(email: string, password: string, displayName: string): Promise<{ user: UserProfile | null; error: string | null }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const name = displayName.trim() || cleanEmail.split('@')[0];
+
+  // 1. Primary: Server registration endpoint with instant email confirmation
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password, displayName: name })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { user: null, error: data.error || 'Registration failed' };
+    }
+    if (data.user) {
+      // Log in on this client browser to establish the active Supabase JWT session
+      if (!isSupabaseConfigured) {
+        await ensureSupabaseInitialized();
+      }
+      if (supabase) {
+        const { data: signData, error: signErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (!signErr && signData.user) {
+          return {
+            user: {
+              id: signData.user.id,
+              email: signData.user.email || cleanEmail,
+              display_name: name,
+              created_at: signData.user.created_at
+            },
+            error: null
+          };
+        }
+      }
+      return { user: data.user, error: null };
+    }
+  } catch (err: any) {
+    console.warn('Server registration notice, trying client SDK fallback:', err);
+  }
+
+  // 2. Client fallback via supabase.auth.signUp
   if (!isSupabaseConfigured) {
     await ensureSupabaseInitialized();
   }
 
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password,
       options: {
-        data: { display_name: displayName }
+        data: { display_name: name }
       }
     });
     if (error) return { user: null, error: error.message };
     if (!data.user) return { user: null, error: 'Registration failed' };
 
-    // Insert profile
-    await supabase.from('profiles').upsert({
-      id: data.user.id,
-      display_name: displayName,
-      updated_at: new Date().toISOString()
-    });
+    // If Supabase required email confirmation and issued no session
+    if (!data.session && (!data.user.identities || data.user.identities.length === 0)) {
+      return { user: null, error: 'An account with this email address already exists. Please sign in instead.' };
+    }
+
+    // Auto-confirm via server if unconfirmed
+    if (!data.session) {
+      try {
+        await fetch('/api/auth/confirm-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail })
+        });
+        const retrySign = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (!retrySign.error && retrySign.data.user) {
+          return {
+            user: {
+              id: retrySign.data.user.id,
+              email: retrySign.data.user.email || cleanEmail,
+              display_name: name,
+              created_at: retrySign.data.user.created_at
+            },
+            error: null
+          };
+        }
+      } catch {
+        // Continue
+      }
+    }
 
     const userProfile: UserProfile = {
       id: data.user.id,
-      email: data.user.email || email,
-      display_name: displayName,
+      email: data.user.email || cleanEmail,
+      display_name: name,
       created_at: data.user.created_at
     };
     return { user: userProfile, error: null };
   }
 
-  // Local fallback registration
-  if (typeof window !== 'undefined') {
-    const rawDb = localStorage.getItem(LOCAL_USERS_DB_KEY);
-    const users: Array<{ id: string; email: string; password: string; display_name: string; created_at: string }> = rawDb ? JSON.parse(rawDb) : [];
-
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return { user: null, error: 'An account with this email already exists. Please sign in instead.' };
-    }
-
-    const newUser = {
-      id: 'usr_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
-      email: email.toLowerCase(),
-      password,
-      display_name: displayName || email.split('@')[0],
-      created_at: new Date().toISOString()
-    };
-
-    users.push(newUser);
-    localStorage.setItem(LOCAL_USERS_DB_KEY, JSON.stringify(users));
-
-    const userProfile: UserProfile = {
-      id: newUser.id,
-      email: newUser.email,
-      display_name: newUser.display_name,
-      created_at: newUser.created_at
-    };
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(userProfile));
-    return { user: userProfile, error: null };
-  }
-
-  return { user: null, error: 'Registration service unavailable' };
+  return { user: null, error: 'Could not connect to database. Please check your internet connection.' };
 }
 
 export async function signOutUser(): Promise<void> {
